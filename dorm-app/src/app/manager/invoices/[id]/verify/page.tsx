@@ -10,7 +10,8 @@ import { Building, Check, X } from 'lucide-react';
 interface InvoiceWithDetails extends Invoice {
     contract?: Contract & {
         user?: { full_name: string; phone: string };
-        room?: { room_number: string };
+        room?: { room_number: string; rent_price: number };
+        room_id?: number;
     };
 }
 
@@ -19,6 +20,7 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
     const router = useRouter();
     const [invoice, setInvoice] = useState<InvoiceWithDetails | null>(null);
     const [loading, setLoading] = useState(true);
+    const [processing, setProcessing] = useState(false); // [NEW]
 
     useEffect(() => {
         async function fetchInvoice() {
@@ -27,7 +29,7 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
                 // Fetch Invoice with Contract -> User + Room
                 const { data, error } = await supabase
                     .from('invoice')
-                    .select('*, contract:contract_id(*, user:user_id(full_name, phone), room:room_id(room_number))')
+                    .select('*, contract:contract_id(*, user:user_id(full_name, phone), room:room_id(room_number, rent_price))')
                     .eq('id', id)
                     .single();
 
@@ -44,7 +46,8 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
     }, [id]);
 
     const handleAction = async (newStatus: 'Paid' | 'Unpaid' | 'Pending') => {
-        if (!invoice) return;
+        if (!invoice || processing) return;
+        setProcessing(true);
         // Proceed directly without confirmation dialog
 
 
@@ -58,10 +61,31 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
                 .eq('id', invoice.id);
 
             if (error) throw error;
+
+            // [NEW] If Entry Fee is Paid, activate contract & occupy room
+            if (newStatus === 'Paid' && invoice.type === 'entry_fee' && invoice.contract_id) {
+                // 1. Update Contract to 'complete' (Active)
+                await supabase
+                    .from('contract')
+                    .update({ status: 'complete' }) // or 'active' depending on your naming convention, user said 'complete' -> 'occupied'
+                    .eq('id', invoice.contract_id);
+
+                // 2. Update Room to 'occupied'
+                // We need room_id from contract. invoice.contract has it if we fetched it.
+                if (invoice.contract?.room_id) {
+                    await supabase
+                        .from('room')
+                        .update({ status: 'occupied' })
+                        .eq('id', invoice.contract.room_id);
+                }
+            }
+
+            if (error) throw error;
             router.push('/manager/tenants');
         } catch (err) {
             console.error('Error updating status:', err);
             alert('Failed to update status.');
+            setProcessing(false);
         }
     };
 
@@ -70,7 +94,7 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
 
     const items = [
         { label: 'ค่าประกันหอพัก', amount: invoice.room_deposit_cost },
-        { label: 'ค่าเช่าห้อง', amount: invoice.contract?.rent_price || 0 }, // Using contract rent price potentially, or invoice could store it? Using contract rent here if invoice rent is 0 or missing? But schema says room_total_cost. Usually rent is implicit or fetched. Let's assume contract rent for now if not explicit in invoice schema besides total.
+        { label: 'ค่าเช่าห้อง', amount: (invoice.contract?.status === 'complete' ? (invoice.contract?.room?.rent_price || 0) : 0) }, // Hide if not complete
         { label: 'ค่าไฟ', amount: invoice.room_elec_cost },
         { label: 'ค่าน้ำ', amount: invoice.room_water_cost },
         { label: 'ค่าซ่อมแซม', amount: invoice.room_repair_cost },

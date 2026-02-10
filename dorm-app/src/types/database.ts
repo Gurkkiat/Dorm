@@ -29,6 +29,7 @@ export interface Room {
     water_unit: number;
     elec_unit: number;
     rent_price: number;
+    current_residents: number;
 }
 
 export interface User {
@@ -56,7 +57,6 @@ export interface Contract {
     move_out: string; // Date string
     durations: number;
     residents: number;
-    rent_price: number;
     signed_at: string; // Timestamp string
 }
 
@@ -64,6 +64,7 @@ export interface Invoice {
     id: number;
     contract_id: number;
     room_deposit_cost: number;
+    room_rent_cost?: number;
     room_water_cost: number;
     room_elec_cost: number;
     room_repair_cost: number;

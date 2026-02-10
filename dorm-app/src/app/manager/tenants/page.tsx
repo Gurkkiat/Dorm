@@ -14,13 +14,13 @@ interface TenantRowData {
     move_in: string;
     move_out: string;
     maintenance_status: string;
-    payment_status: string; // [NEW]
+    payment_status: string;
     deposit: number;
     electricity: number;
     water: number;
-    rent: number;
+    rent: number | string; // Changed to allow '-'
     repair: number;
-    invoice_id: number; // [NEW]
+    invoice_id: number;
     invoice_total: number;
     due_date: string;
 }
@@ -34,7 +34,7 @@ export default function ManageTenantsPage() {
     const [roomFilter, setRoomFilter] = useState('All');
     const [genderFilter, setGenderFilter] = useState('All');
     const [maintFilter, setMaintFilter] = useState('All');
-    const [paymentFilter, setPaymentFilter] = useState('All'); // [NEW]
+    const [paymentFilter, setPaymentFilter] = useState('All');
     const [searchTerm, setSearchTerm] = useState('');
 
     // Dropdown Options (Computed from data)
@@ -45,30 +45,49 @@ export default function ManageTenantsPage() {
             try {
                 setLoading(true);
 
-                // 1. Fetch Active Contracts with Room and User
+                // 0. Get current manager's branch
+                const storedName = localStorage.getItem('user_name') || 'Somsak Rakthai';
+                const { data: branchData, error: branchError } = await supabase
+                    .from('branch')
+                    .select('id')
+                    .eq('manager_name', storedName)
+                    .single();
+
+                if (branchError || !branchData) {
+                    console.error('Branch not found for manager:', storedName);
+                    setLoading(false);
+                    return;
+                }
+
+                const branchId = branchData.id;
+
+                // 1. Fetch Active Contracts with Room and User (Filtered by Branch)
                 const { data: contracts, error: contractError } = await supabase
                     .from('contract')
-                    .select('*, room:room_id(room_number), user:user_id(full_name, sex)')
+                    .select('*, room:room_id!inner(room_number, rent_price, building:building_id!inner(branch_id)), user:user_id(full_name, sex, is_primary_tenant)')
+                    .eq('room.building.branch_id', branchId)
                     .order('id', { ascending: true });
 
                 if (contractError) throw contractError;
 
-                // 2. Fetch Latest Invoices
+                // 2. Fetch Latest Invoices (Filtered by Branch)
                 const { data: invoices } = await supabase
                     .from('invoice')
-                    .select('*')
+                    .select('*, contract:contract_id!inner(room:room_id!inner(building:building_id!inner(branch_id)))')
+                    .eq('contract.room.building.branch_id', branchId)
                     .order('id', { ascending: false });
 
-                // 3. Fetch Latest Maintenance
+                // 3. Fetch Latest Maintenance (Filtered by Branch)
                 const { data: maintenance } = await supabase
                     .from('maintenance_request')
-                    .select('*')
+                    .select('*, room:room_id!inner(building:building_id!inner(branch_id))')
+                    .eq('room.building.branch_id', branchId)
                     .order('requested_at', { ascending: false });
 
                 // Extended type for Join
                 interface ContractWithDetails extends Contract {
-                    room: { room_number: string };
-                    user: { full_name: string; sex: string };
+                    room: { room_number: string; rent_price: number };
+                    user: { full_name: string; sex: string; is_primary_tenant: boolean | string };
                 }
 
                 const rows: TenantRowData[] = ((contracts as unknown as ContractWithDetails[]) || []).map((c) => {
@@ -76,30 +95,37 @@ export default function ManageTenantsPage() {
                     const latestInvoice = (invoices as Invoice[])?.find(inv => inv.contract_id === c.id);
 
                     // Find latest active maintenance for this room
-                    const latestMaint = (maintenance as MaintenanceRequest[])?.find(m => m.room_id === c.room_id && m.status_technician !== 'Completed');
+                    const latestMaint = (maintenance as MaintenanceRequest[])?.find(m => m.room_id === c.room_id && m.status_technician !== 'Completed' && m.status_technician !== 'Done' && m.status_technician !== 'done');
+
+                    // Helper to capitalize first letter
+                    const maximize = (s: string | undefined) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '-';
+
+                    // Rent visibility logic: Only show if status is 'complete' AND is primary tenant
+                    const isPrimary = c.user?.is_primary_tenant === true || c.user?.is_primary_tenant === 'TRUE' || c.user?.is_primary_tenant === 'true';
+                    const showRent = c.status === 'complete' && isPrimary;
 
                     return {
                         id: c.id,
                         room_number: c.room?.room_number || 'N/A',
-                        gender: c.user?.sex === 'Male' || c.user?.sex === 'ชาย' ? 'M' : (c.user?.sex === 'Female' || c.user?.sex === 'หญิง' ? 'F' : '-'),
+                        gender: c.user?.sex || '-',
                         name: c.user?.full_name || 'Unknown',
                         move_in: c.move_in ? new Date(c.move_in).toLocaleDateString('th-TH') : '-',
                         move_out: c.move_out ? new Date(c.move_out).toLocaleDateString('th-TH') : '-',
-                        maintenance_status: latestMaint?.status_technician || '-',
-                        payment_status: latestInvoice?.status || '-', // [NEW]
+                        maintenance_status: maximize(latestMaint?.status_technician),
+                        payment_status: maximize(latestInvoice?.status),
                         deposit: latestInvoice?.room_deposit_cost || 0,
                         electricity: latestInvoice?.room_elec_cost || 0,
                         water: latestInvoice?.room_water_cost || 0,
-                        rent: c.rent_price || 0,
+                        rent: showRent ? (c.room?.rent_price || 0) : '-', // Hide if not complete
                         repair: latestInvoice?.room_repair_cost || 0,
-                        invoice_id: latestInvoice?.id || 0, // [NEW]
+                        invoice_id: latestInvoice?.id || 0,
                         invoice_total: latestInvoice?.room_total_cost || 0,
                         due_date: latestInvoice?.due_date ? new Date(latestInvoice.due_date).toLocaleDateString('th-TH') : '-',
                     };
                 });
 
                 setData(rows);
-                console.log('Tenant Data Debug:', rows); // [DEBUG]
+                console.log('Tenant Data Debug:', rows);
                 setFilteredData(rows);
 
                 // Extract unique room numbers for filter
@@ -123,26 +149,34 @@ export default function ManageTenantsPage() {
         if (roomFilter !== 'All') {
             res = res.filter(r => r.room_number === roomFilter);
         }
+
+        // Case-Insensitive Gender Filter
         if (genderFilter !== 'All') {
+            const filter = genderFilter.toLowerCase();
             res = res.filter(r => {
-                if (genderFilter === 'Male') return r.gender === 'M';
-                if (genderFilter === 'Female') return r.gender === 'F';
-                return true;
+                const g = r.gender?.toLowerCase() || '';
+                if (filter === 'male') return g === 'male' || g === 'ชาย';
+                if (filter === 'female') return g === 'female' || g === 'หญิง';
+                if (filter === 'lgbtq+') return g === 'lgbtq+' || g === 'lgbtq';
+                return g.includes(filter);
             });
         }
+
+        // Case-Insensitive Maintenance Filter
         if (maintFilter !== 'All') {
             if (maintFilter === '-') {
                 res = res.filter(r => r.maintenance_status === '-' || !r.maintenance_status);
             } else {
-                res = res.filter(r => r.maintenance_status === maintFilter);
+                res = res.filter(r => r.maintenance_status?.toLowerCase() === maintFilter.toLowerCase());
             }
         }
-        // [NEW] Payment Filter Logic
+
+        // Case-Insensitive Payment Filter
         if (paymentFilter !== 'All') {
             if (paymentFilter === '-') {
                 res = res.filter(r => r.payment_status === '-' || !r.payment_status);
             } else {
-                res = res.filter(r => r.payment_status === paymentFilter);
+                res = res.filter(r => r.payment_status?.toLowerCase() === paymentFilter.toLowerCase());
             }
         }
 
@@ -159,15 +193,16 @@ export default function ManageTenantsPage() {
 
     // Helper for Maintenance Color
     const getMaintColor = (status: string) => {
-        if (status.includes('เปลี่ยน') || status === 'Pending') return 'text-yellow-400';
-        if (status.includes('กำลัง') || status === 'In Progress') return 'text-orange-400';
-        if (status.includes('สำเร็จ') || status === 'Completed') return 'text-green-400';
+        const s = status?.toLowerCase() || '';
+        if (s === 'pending') return 'text-yellow-400';
+        if (s === 'repairing' || s === 'in progress') return 'text-orange-400';
+        if (s === 'done' || s === 'completed') return 'text-green-400';
         return 'text-gray-400';
     };
 
     // Helper for Due Date Color based on Payment Status
     const getDueDateColor = (status: string) => {
-        const s = status.toLowerCase();
+        const s = status?.toLowerCase() || '';
         if (s === 'paid') return 'text-green-400';
         if (s === 'unpaid') return 'text-yellow-400';
         if (s === 'overdue') return 'text-red-500';
@@ -210,6 +245,7 @@ export default function ManageTenantsPage() {
                                 <option value="All">All</option>
                                 <option value="Male">Male</option>
                                 <option value="Female">Female</option>
+                                <option value="LGBTQ+">LGBTQ+</option>
                             </select>
                         </div>
 
@@ -224,11 +260,12 @@ export default function ManageTenantsPage() {
                                 <option value="All">All</option>
                                 <option value="-">None (-)</option>
                                 <option value="Pending">Pending</option>
-                                <option value="In Progress">In Progress</option>
+                                <option value="Repairing">Repairing</option>
+                                <option value="Done">Done</option>
                             </select>
                         </div>
 
-                        {/* [NEW] Payment Filter */}
+                        {/* Payment Filter */}
                         <div className="flex flex-col">
                             <label className="text-xs mb-1 ml-1">Payment status</label>
                             <select
@@ -296,7 +333,7 @@ export default function ManageTenantsPage() {
                                     <td className="py-4 px-2">{row.deposit === 0 ? '-' : row.deposit.toLocaleString()}</td>
                                     <td className="py-4 px-2">{row.electricity === 0 ? '-' : row.electricity.toLocaleString()}</td>
                                     <td className="py-4 px-2">{row.water === 0 ? '-' : row.water.toLocaleString()}</td>
-                                    <td className="py-4 px-2">{row.rent.toLocaleString()}</td>
+                                    <td className="py-4 px-2">{typeof row.rent === 'number' ? row.rent.toLocaleString() : row.rent}</td>
                                     <td className="py-4 px-2">{row.repair === 0 ? '-' : row.repair.toLocaleString()}</td>
                                     <td className="py-4 px-2 font-bold">{row.invoice_total === 0 ? '-' : row.invoice_total.toLocaleString()}</td>
                                     <td className={`py-4 px-2 font-bold ${getDueDateColor(row.payment_status)}`}>

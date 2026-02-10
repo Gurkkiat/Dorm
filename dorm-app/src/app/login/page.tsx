@@ -47,7 +47,7 @@ export default function LoginPage() {
             if (data.role?.toLowerCase().includes('manager') || data.role?.toLowerCase() === 'admin') { // Heuristic check
                 router.push('/manager/dashboard');
             } else {
-                router.push('/invoices'); // Default for tenants
+                router.push('/tenant/dashboard'); // Default for tenants
             }
 
         } catch (err: unknown) {
