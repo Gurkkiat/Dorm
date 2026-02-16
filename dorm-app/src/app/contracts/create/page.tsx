@@ -8,14 +8,24 @@ import { Eye, EyeOff } from 'lucide-react';
 
 export default function CreateContractPage() {
     const router = useRouter();
-    const [rooms, setRooms] = useState<(Room & { residentCount: number })[]>([]);
+    // State for Branch/Building Selection
+    const [branches, setBranches] = useState<{ id: number; branches_name: string; city: string }[]>([]);
+    const [buildings, setBuildings] = useState<{ id: number; name_building: string }[]>([]);
+
+    // Selected IDs
+    const [selectedBranchId, setSelectedBranchId] = useState<string>('');
+    const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
+
+    // General UI States
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
-    const [moveOutRange, setMoveOutRange] = useState({ min: '', max: '' });
-    const [roomType, setRoomType] = useState<'vacant' | 'occupied'>('vacant');
-    const [branchDetails, setBranchDetails] = useState<{ city: string; branches_name: string } | null>(null);
+    const [contractNumberDisplay, setContractNumberDisplay] = useState('Select Branch...');
 
-    // Form states
+    // Room Data State
+    const [rooms, setRooms] = useState<(Room & { residentCount: number })[]>([]);
+    const [roomType, setRoomType] = useState<'vacant' | 'occupied'>('vacant');
+
+    // Form Data State
     const [formData, setFormData] = useState({
         full_name: '',
         gender: 'male',
@@ -24,7 +34,7 @@ export default function CreateContractPage() {
         pet: 'none',
         residents: '1',
         identification_number: '',
-        identification_type: 'THAI_ID',
+        identification_type: 'THAI_ID' as 'THAI_ID' | 'PASSPORT',
         nation: 'Thai',
         room_id: '',
         move_in: '',
@@ -35,90 +45,121 @@ export default function CreateContractPage() {
         is_primary_tenant: 'TRUE',
     });
 
-    // New UI specific states
+    // Form Aux States
     const [petOption, setPetOption] = useState<'none' | 'dog' | 'cat' | 'other'>('none');
     const [petOtherText, setPetOtherText] = useState('');
     const [countryCode, setCountryCode] = useState('+66');
+    const [moveOutRange, setMoveOutRange] = useState({ min: '', max: '' });
     const [showPassword, setShowPassword] = useState(false);
 
-    // Contract Number Display
-    const [contractNumberDisplay, setContractNumberDisplay] = useState('Loading...');
-
     useEffect(() => {
-        async function fetchData() {
+        async function fetchInitialData() {
             try {
-                // 1. Get current manager's branch
-                const storedName = localStorage.getItem('user_name') || 'Somsak Rakthai'; // Fallback for dev
+                // 1. Fetch All Branches
                 const { data: branchData, error: branchError } = await supabase
                     .from('branch')
                     .select('id, city, branches_name')
+                    .order('id');
+
+                if (branchError) throw branchError;
+                setBranches(branchData || []);
+
+                // Set default branch if manager has one (Optional, but good UX)
+                const storedName = localStorage.getItem('user_name') || 'Somsak Rakthai';
+                const managerBranch = branchData?.find(b => b.branches_name.includes(storedName) || b.id === 387); // Hack for Admin User = 387 or logic
+                // Actually, let's just default to the first one or let user pick.
+                // Or better: try to find the one assigned to current user
+                const { data: userBranch } = await supabase
+                    .from('branch')
+                    .select('id')
                     .eq('manager_name', storedName)
                     .single();
 
-                if (branchError || !branchData) {
-                    console.error('Branch not found for manager:', storedName);
-                    setContractNumberDisplay('UNKNOWN_BRANCH_PENDING');
-                } else {
-                    setBranchDetails(branchData);
-                    // Default display until fetched
-                    setContractNumberDisplay(`${branchData.city}_${branchData.branches_name}_Waiting...`);
+                if (userBranch) {
+                    setSelectedBranchId(userBranch.id.toString());
+                } else if (branchData && branchData.length > 0) {
+                    setSelectedBranchId(branchData[0].id.toString());
                 }
 
-                const branchId = branchData?.id;
+                // ... keep existing resident counting logic if needed, but it depends on rooms which depend on building
+                // So we postpone fetching rooms until building is selected.
 
-                // 2. Fetch ALL rooms for this branch
-                let query = supabase
+            } catch (error) {
+                console.error('Error fetching initial data:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        fetchInitialData();
+    }, []);
+
+    // Fetch Buildings when Branch Changes
+    useEffect(() => {
+        async function fetchBuildings() {
+            if (!selectedBranchId) {
+                setBuildings([]);
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from('building')
+                .select('id, name_building')
+                .eq('branch_id', parseInt(selectedBranchId))
+                .order('name_building');
+
+            if (!error) {
+                setBuildings(data || []);
+                // Reset building and rooms
+                setSelectedBuildingId('');
+                setRooms([]);
+            }
+        }
+
+        fetchBuildings();
+    }, [selectedBranchId]);
+
+    // Fetch Rooms when Building Changes
+    useEffect(() => {
+        async function fetchRooms() {
+            if (!selectedBuildingId) {
+                setRooms([]);
+                return;
+            }
+
+            try {
+                // Fetch Rooms
+                const { data: roomsData, error: roomsError } = await supabase
                     .from('room')
                     .select('*, building:building_id!inner(branch_id)')
+                    .eq('building_id', parseInt(selectedBuildingId))
                     .order('room_number');
 
-                if (branchId) {
-                    query = query.eq('building.branch_id', branchId);
-                }
-
-                const { data: roomsData, error: roomsError } = await query;
                 if (roomsError) throw roomsError;
 
-                // 2.1 Fetch LAST contract ID to estimate next number
-                let nextContractId = 1;
-                const { data: lastContract, error: lastContractError } = await supabase
-                    .from('contract')
-                    .select('id')
-                    .order('id', { ascending: false })
-                    .limit(1)
-                    .single();
-
-                if (!lastContractError && lastContract) {
-                    nextContractId = lastContract.id + 1;
+                // Fetch Active Contracts for Occupancy
+                // We optimize by filtering contracts for these rooms only
+                const roomIds = roomsData.map(r => r.id);
+                if (roomIds.length === 0) {
+                    setRooms([]);
+                    return;
                 }
 
-                // Set Display
-                if (branchData) {
-                    setContractNumberDisplay(`${branchData.city}_${branchData.branches_name}_${nextContractId}`);
-                }
-
-                // 3. Fetch active contracts to count residents
                 const { data: activeContracts, error: contractsError } = await supabase
                     .from('contract')
                     .select('room_id, user:user_id!inner(is_primary_tenant)')
+                    .in('room_id', roomIds)
                     .in('status', ['Active', 'active', 'complete', 'incomplete']);
 
                 if (contractsError) throw contractsError;
 
                 // Calculate occupancy
                 const occupancyMap = new Map<number, number>();
-                const primaryRoomIds = new Set<number>();
-
                 activeContracts?.forEach(c => {
                     occupancyMap.set(c.room_id, (occupancyMap.get(c.room_id) || 0) + 1);
-                    // @ts-expect-error user is joined
-                    if (c.user?.is_primary_tenant) {
-                        primaryRoomIds.add(c.room_id);
-                    }
                 });
 
-                // Merge resident count into rooms
-                const roomsWithCount = (roomsData || []).map(r => ({
+                const roomsWithCount = roomsData.map(r => ({
                     ...r,
                     residentCount: occupancyMap.get(r.id) || 0
                 }));
@@ -126,14 +167,22 @@ export default function CreateContractPage() {
                 setRooms(roomsWithCount as (Room & { residentCount: number })[]);
 
             } catch (error) {
-                console.error('Error fetching data:', error);
-            } finally {
-                setLoading(false);
+                console.error("Error fetching rooms:", error);
             }
         }
 
-        fetchData();
-    }, []);
+        fetchRooms();
+    }, [selectedBuildingId]);
+
+    // Update Contract Number Display
+    useEffect(() => {
+        const branch = branches.find(b => b.id.toString() === selectedBranchId);
+        if (branch) {
+            setContractNumberDisplay(`${branch.city}_${branch.branches_name}_Waiting...`);
+        } else {
+            setContractNumberDisplay('Select Branch...');
+        }
+    }, [selectedBranchId, branches]);
 
     // Handle room type change effects
     useEffect(() => {
@@ -412,8 +461,11 @@ export default function CreateContractPage() {
             if (contractError) throw contractError;
 
             // 3.1 Update Contract Number using ACTUAL ID
-            if (branchDetails && contractData) {
-                const newContractNumber = `${branchDetails.city}_${branchDetails.branches_name}_${contractData.id}`;
+            // Find selected branch info
+            const currentBranch = branches.find(b => b.id.toString() === selectedBranchId);
+
+            if (currentBranch && contractData) {
+                const newContractNumber = `${currentBranch.city}_${currentBranch.branches_name}_${contractData.id}`;
                 await supabase
                     .from('contract')
                     .update({ contract_number: newContractNumber })
@@ -451,12 +503,12 @@ export default function CreateContractPage() {
                     .insert([{
                         contract_id: contractData.id,
                         room_deposit_cost: 5000,
-                        room_rent_cost: 0,
+                        room_rent_cost: 0, // Rent is 0 (Post-paid: Collect at end of month)
                         room_water_cost: 0,
                         room_elec_cost: 0,
                         room_repair_cost: 0,
-                        room_total_cost: 0,
-                        status: 'pending', // Set to pending as requested
+                        room_total_cost: 5000, // Total = Deposit
+                        status: 'pending',
                         type: 'entry_fee',
                         bill_date: billDate.toISOString(),
                         due_date: dueDate.toISOString(),
@@ -636,6 +688,39 @@ export default function CreateContractPage() {
                     <div className="grid grid-cols-4 gap-4 mb-4">
                         <div className="flex flex-col">
                             <div className="flex justify-between items-center mb-1">
+                                <label className={labelClass}>Select Branch & Building</label>
+                            </div>
+
+                            {/* Branch Selection */}
+                            <select
+                                value={selectedBranchId}
+                                onChange={(e) => setSelectedBranchId(e.target.value)}
+                                className={`${selectClass} mb-2`}
+                            >
+                                <option value="">Select Branch</option>
+                                {branches.map(b => (
+                                    <option key={b.id} value={b.id}>
+                                        {b.branches_name} ({b.city})
+                                    </option>
+                                ))}
+                            </select>
+
+                            {/* Building Selection */}
+                            <select
+                                value={selectedBuildingId}
+                                onChange={(e) => setSelectedBuildingId(e.target.value)}
+                                className={`${selectClass} mb-2`}
+                                disabled={!selectedBranchId}
+                            >
+                                <option value="">Select Building</option>
+                                {buildings.map(b => (
+                                    <option key={b.id} value={b.id}>
+                                        {b.name_building}
+                                    </option>
+                                ))}
+                            </select>
+
+                            <div className="flex justify-between items-center mb-1">
                                 <label className={labelClass}>Room</label>
                                 {/* Room Type Toggle */}
                                 <div className="flex bg-blue-400 rounded-lg p-0.5 pointer-events-auto z-10">
@@ -655,8 +740,8 @@ export default function CreateContractPage() {
                                     </button>
                                 </div>
                             </div>
-                            <select name="room_id" value={formData.room_id} onChange={handleChange} className={selectClass} required>
-                                <option value="">Select</option>
+                            <select name="room_id" value={formData.room_id} onChange={handleChange} className={selectClass} required disabled={!selectedBuildingId}>
+                                <option value="">Select Room</option>
                                 {rooms
                                     .filter(room => {
                                         // Pet Filter

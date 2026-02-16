@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { Invoice, MaintenanceRequest, Contract } from '@/types/database';
 import { Search } from 'lucide-react';
 import Link from 'next/link';
+import { useManager } from '../ManagerContext';
 
 interface TenantRowData {
     id: number;
@@ -26,18 +27,28 @@ interface TenantRowData {
 }
 
 export default function ManageTenantsPage() {
+    const { selectedBranchId } = useManager();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<TenantRowData[]>([]);
     const [filteredData, setFilteredData] = useState<TenantRowData[]>([]);
 
     // Filters
+    // Branch Filter comes from Context now
+    const [buildingFilter, setBuildingFilter] = useState('All');
+
+    // Check if user is Admin to show all branches
+    const [isAdmin, setIsAdmin] = useState(false);
+
+    // Options
+    const [buildingOptions, setBuildingOptions] = useState<{ id: number, name: string }[]>([]);
+
+    // ... existing filters ...
     const [roomFilter, setRoomFilter] = useState('All');
     const [genderFilter, setGenderFilter] = useState('All');
     const [maintFilter, setMaintFilter] = useState('All');
     const [paymentFilter, setPaymentFilter] = useState('All');
     const [searchTerm, setSearchTerm] = useState('');
 
-    // Dropdown Options (Computed from data)
     const [roomOptions, setRoomOptions] = useState<string[]>([]);
 
     useEffect(() => {
@@ -45,48 +56,36 @@ export default function ManageTenantsPage() {
             try {
                 setLoading(true);
 
-                // 0. Get current manager's branch
-                const storedName = localStorage.getItem('user_name') || 'Somsak Rakthai';
-                const { data: branchData, error: branchError } = await supabase
-                    .from('branch')
-                    .select('id')
-                    .eq('manager_name', storedName)
-                    .single();
-
-                if (branchError || !branchData) {
-                    console.error('Branch not found for manager:', storedName);
-                    setLoading(false);
-                    return;
-                }
-
-                const branchId = branchData.id;
+                // Fetch All Data (No branch restriction initially, unless we want to default to user's branch)
 
                 // 1. Fetch Active Contracts with Room and User (Filtered by Branch)
                 const { data: contracts, error: contractError } = await supabase
                     .from('contract')
-                    .select('*, room:room_id!inner(room_number, rent_price, building:building_id!inner(branch_id)), user:user_id(full_name, sex, is_primary_tenant)')
-                    .eq('room.building.branch_id', branchId)
+                    .select('*, room:room_id!inner(room_number, building_id, rent_price, building:building_id!inner(branch_id, name_building)), user:user_id(full_name, sex, is_primary_tenant)')
                     .order('id', { ascending: true });
 
                 if (contractError) throw contractError;
 
-                // 2. Fetch Latest Invoices (Filtered by Branch)
+                // 2. Fetch Latest Invoices
                 const { data: invoices } = await supabase
                     .from('invoice')
-                    .select('*, contract:contract_id!inner(room:room_id!inner(building:building_id!inner(branch_id)))')
-                    .eq('contract.room.building.branch_id', branchId)
+                    .select('*')
                     .order('id', { ascending: false });
 
-                // 3. Fetch Latest Maintenance (Filtered by Branch)
+                // 3. Fetch Latest Maintenance
                 const { data: maintenance } = await supabase
                     .from('maintenance_request')
-                    .select('*, room:room_id!inner(building:building_id!inner(branch_id))')
-                    .eq('room.building.branch_id', branchId)
+                    .select('*')
                     .order('requested_at', { ascending: false });
 
                 // Extended type for Join
                 interface ContractWithDetails extends Contract {
-                    room: { room_number: string; rent_price: number };
+                    room: {
+                        room_number: string;
+                        rent_price: number;
+                        building_id: number;
+                        building: { branch_id: number; name_building: string; }
+                    };
                     user: { full_name: string; sex: string; is_primary_tenant: boolean | string };
                 }
 
@@ -100,9 +99,10 @@ export default function ManageTenantsPage() {
                     // Helper to capitalize first letter
                     const maximize = (s: string | undefined) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '-';
 
-                    // Rent visibility logic: Only show if status is 'complete' AND is primary tenant
-                    const isPrimary = c.user?.is_primary_tenant === true || c.user?.is_primary_tenant === 'TRUE' || c.user?.is_primary_tenant === 'true';
-                    const showRent = c.status === 'complete' && isPrimary;
+                    // Rent visibility logic
+                    // If invoice exists, use invoice rent cost. If not, show '-' (no bill yet)
+                    // The user wants to see what's in the BILL.
+                    const rentToShow = latestInvoice ? (latestInvoice.type === 'entry_fee' ? 0 : latestInvoice.room_rent_cost) : '-';
 
                     return {
                         id: c.id,
@@ -116,17 +116,20 @@ export default function ManageTenantsPage() {
                         deposit: latestInvoice?.room_deposit_cost || 0,
                         electricity: latestInvoice?.room_elec_cost || 0,
                         water: latestInvoice?.room_water_cost || 0,
-                        rent: showRent ? (c.room?.rent_price || 0) : '-', // Hide if not complete
+                        rent: rentToShow,
                         repair: latestInvoice?.room_repair_cost || 0,
                         invoice_id: latestInvoice?.id || 0,
                         invoice_total: latestInvoice?.room_total_cost || 0,
                         due_date: latestInvoice?.due_date ? new Date(latestInvoice.due_date).toLocaleDateString('th-TH') : '-',
-                    };
+
+                        // Hidden data for filtering
+                        branch_id: c.room?.building?.branch_id,
+                        building_id: c.room?.building_id,
+                        building_name: c.room?.building?.name_building
+                    } as TenantRowData & { branch_id: number, building_id: number, building_name: string };
                 });
 
                 setData(rows);
-                console.log('Tenant Data Debug:', rows);
-                setFilteredData(rows);
 
                 // Extract unique room numbers for filter
                 const rooms = Array.from(new Set(rows.map(r => r.room_number))).sort();
@@ -142,10 +145,42 @@ export default function ManageTenantsPage() {
         fetchData();
     }, []);
 
+    // Effect to update Building Options when Branch changes
+    useEffect(() => {
+        async function fetchBuildings() {
+            let query = supabase
+                .from('building')
+                .select('id, name_building')
+                .order('name_building');
+
+            if (selectedBranchId !== 'All') {
+                query = query.eq('branch_id', Number(selectedBranchId));
+            }
+
+            const { data } = await query;
+
+            if (data) {
+                setBuildingOptions(data.map(b => ({ id: b.id, name: b.name_building })));
+            }
+            setBuildingFilter('All');
+        }
+
+        fetchBuildings();
+    }, [selectedBranchId]);
+
     // Filter Logic
     useEffect(() => {
-        let res = data;
+        let res = data as (TenantRowData & { branch_id: number; building_id: number; building_name: string })[];
 
+        // Branch Filter
+        if (selectedBranchId !== 'All') {
+            res = res.filter(r => r.branch_id === Number(selectedBranchId));
+        }
+
+        // Building Filter
+        if (buildingFilter !== 'All') {
+            res = res.filter(r => r.building_id === parseInt(buildingFilter));
+        }
         if (roomFilter !== 'All') {
             res = res.filter(r => r.room_number === roomFilter);
         }
@@ -189,7 +224,7 @@ export default function ManageTenantsPage() {
         }
 
         setFilteredData(res);
-    }, [data, roomFilter, genderFilter, maintFilter, paymentFilter, searchTerm]);
+    }, [data, selectedBranchId, buildingFilter, roomFilter, genderFilter, maintFilter, paymentFilter, searchTerm]);
 
     // Helper for Maintenance Color
     const getMaintColor = (status: string) => {
@@ -221,6 +256,23 @@ export default function ManageTenantsPage() {
                     <h1 className="text-3xl font-bold">Manage Tenant</h1>
 
                     <div className="flex flex-wrap gap-4 items-end">
+                        {/* Branch Filter Removed (Now in Sidebar) */}
+
+                        {/* Building Filter */}
+                        <div className="flex flex-col">
+                            <label className="text-xs mb-1 ml-1">Building:</label>
+                            <select
+                                className="bg-white text-black text-sm rounded px-3 py-1.5 focus:outline-none min-w-[100px]"
+                                value={buildingFilter}
+                                onChange={(e) => setBuildingFilter(e.target.value)}
+                            >
+                                <option value="All">All</option>
+                                {buildingOptions.map(b => (
+                                    <option key={b.id} value={b.id}>{b.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
                         {/* Room Filter */}
                         <div className="flex flex-col">
                             <label className="text-xs mb-1 ml-1">Room:</label>
@@ -354,24 +406,24 @@ export default function ManageTenantsPage() {
                             )}
                         </tbody>
                     </table>
-                </div>
+                </div >
 
                 {/* Footer Show More */}
-                <div className="mt-6 text-center text-xs font-bold tracking-widest cursor-pointer hover:opacity-80">
+                < div className="mt-6 text-center text-xs font-bold tracking-widest cursor-pointer hover:opacity-80" >
                     SHOW MORE
-                </div>
+                </div >
 
                 {/* Floating Make Contract Button */}
-                <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2">
+                < div className="absolute bottom-8 left-1/2 transform -translate-x-1/2" >
                     <Link href="/contracts/create">
                         <button className="bg-[#00C853] hover:bg-[#009624] text-white font-bold py-3 px-8 rounded-full shadow-lg flex items-center gap-2 transition-transform hover:scale-105">
                             {/* Icon optional, design doesn't show one explicitly but usually good */}
                             make a contract
                         </button>
                     </Link>
-                </div>
+                </div >
 
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }

@@ -44,8 +44,12 @@ export default function LoginPage() {
             }
 
             // 3. Redirect based on role
-            if (data.role?.toLowerCase().includes('manager') || data.role?.toLowerCase() === 'admin') { // Heuristic check
+            // 3. Redirect based on role
+            const role = data.role?.toLowerCase() || '';
+            if (role.includes('manager') || role === 'admin') {
                 router.push('/manager/dashboard');
+            } else if (role === 'mechanic') {
+                router.push('/mechanic/maintenance');
             } else {
                 router.push('/tenant/dashboard'); // Default for tenants
             }

@@ -1,10 +1,10 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Invoice, MaintenanceRequest, Contract } from '@/types/database';
-import { Wrench, DollarSign, Settings } from 'lucide-react'; // Placeholder icons
+import { Wrench, DollarSign, Settings } from 'lucide-react';
+import { useManager } from '../ManagerContext';
 
 // Extended Types for Joins
 interface MaintenanceWithDetails extends MaintenanceRequest {
@@ -24,6 +24,7 @@ interface ContractWithDetails extends Contract {
 }
 
 export default function DashboardPage() {
+    const { selectedBranchId } = useManager();
     const [maintenanceList, setMaintenanceList] = useState<MaintenanceWithDetails[]>([]);
     const [paymentList, setPaymentList] = useState<InvoiceWithDetails[]>([]);
     const [tenantList, setTenantList] = useState<ContractWithDetails[]>([]);
@@ -39,45 +40,41 @@ export default function DashboardPage() {
             try {
                 setLoading(true);
 
-                // 1. Get current manager's branch
-                const storedName = localStorage.getItem('user_name') || 'Somsak Rakthai'; // Fallback for dev
-                const { data: branchData, error: branchError } = await supabase
-                    .from('branch')
-                    .select('id')
-                    .eq('manager_name', storedName)
-                    .single();
-
-                if (branchError || !branchData) {
-                    console.error('Branch not found for manager:', storedName);
-                    setLoading(false);
-                    return;
-                }
-
-                const branchId = branchData.id;
-
                 // 2. Fetch Maintenance (Filtered by Branch)
-                // path: maintenance_request -> room -> building -> branch
-                const { data: maintData } = await supabase
+                let maintQuery = supabase
                     .from('maintenance_request')
                     .select('*, room:room_id!inner(room_number, building:building_id!inner(branch_id))')
-                    .eq('room.building.branch_id', branchId)
                     .order('requested_at', { ascending: false });
 
+                if (selectedBranchId !== 'All') {
+                    maintQuery = maintQuery.eq('room.building.branch_id', selectedBranchId);
+                }
+
+                const { data: maintData } = await maintQuery;
+
                 // 3. Fetch Payments (Filtered by Branch)
-                // path: invoice -> contract -> room -> building -> branch
-                const { data: payData } = await supabase
+                let payQuery = supabase
                     .from('invoice')
                     .select('*, contract:contract_id!inner(room:room_id!inner(room_number, building:building_id!inner(branch_id)))')
-                    .eq('contract.room.building.branch_id', branchId)
                     .order('bill_date', { ascending: false });
 
+                if (selectedBranchId !== 'All') {
+                    payQuery = payQuery.eq('contract.room.building.branch_id', selectedBranchId);
+                }
+
+                const { data: payData } = await payQuery;
+
                 // 4. Fetch Tenants (Filtered by Branch)
-                // path: contract -> room -> building -> branch
-                const { data: tenantData } = await supabase
+                let tenantQuery = supabase
                     .from('contract')
                     .select('*, room:room_id!inner(room_number, building:building_id!inner(branch_id)), user:user_id(full_name, sex)')
-                    .eq('status', 'complete')
-                    .eq('room.building.branch_id', branchId);
+                    .in('status', ['Active', 'active']);
+
+                if (selectedBranchId !== 'All') {
+                    tenantQuery = tenantQuery.eq('room.building.branch_id', selectedBranchId);
+                }
+
+                const { data: tenantData } = await tenantQuery;
 
                 setMaintenanceList((maintData as unknown as MaintenanceWithDetails[]) || []);
                 setPaymentList((payData as unknown as InvoiceWithDetails[]) || []);
@@ -90,7 +87,7 @@ export default function DashboardPage() {
         }
 
         fetchData();
-    }, []);
+    }, [selectedBranchId]);
 
     // Helper for Maintenance Badge Color
     const getMaintBadge = (status: string) => {
@@ -177,7 +174,7 @@ export default function DashboardPage() {
                     {filteredMaintenance.map((item) => (
                         <div key={item.id} className="bg-white text-black rounded-full px-4 py-2 flex items-center justify-between text-sm shadow-sm hover:shadow-md transition-shadow">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-bold w-20 text-center truncate ${getMaintBadge(item.status_technician || 'Pending')}`}>
-                                {item.status_technician || 'Pending'}
+                                {['Done', 'Completed', 'done', 'completed'].includes(item.status_technician || '') ? 'Complete' : (item.status_technician || 'Pending')}
                             </span>
                             <span className="flex-1 mx-2 truncate font-medium">{item.issue_description}</span>
                             <span className="font-bold text-[#0047AB] whitespace-nowrap">{item.room?.room_number}</span>
@@ -213,7 +210,7 @@ export default function DashboardPage() {
                     {filteredPayment.map((item) => (
                         <div key={item.id} className="bg-white text-black rounded-full px-4 py-2 flex items-center justify-between text-sm shadow-sm hover:shadow-md transition-shadow">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-bold w-20 text-center truncate border ${getPaymentBadge(item.status)}`}>
-                                {item.status}
+                                {item.status.charAt(0).toUpperCase() + item.status.slice(1).toLowerCase()}
                             </span>
                             <span className="flex-1 mx-2 truncate font-medium text-center">{item.room_total_cost.toLocaleString()}</span>
                             <span className="font-bold text-[#0047AB] whitespace-nowrap">{item.contract?.room?.room_number}</span>

@@ -6,18 +6,18 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function checkHierarchy() {
-    console.log('--- Building Table ---');
-    const { data: b } = await supabase.from('building').select('*').limit(1);
-    if (b && b.length) console.log(Object.keys(b[0]));
+    console.log('--- Checking Columns by Force Insert (Expected Error) ---');
 
-    console.log('\n--- Room Table ---');
-    const { data: r } = await supabase.from('room').select('*').limit(1);
-    if (r && r.length) console.log(Object.keys(r[0]));
+    // Try to insert an empty object to branch to see error with column names or just inspection
+    // If not possible, I have to rely on src/types/database.ts
+    // Let's assume src/types/database.ts is the source of truth for now, but verify one table.
 
-    // Check if branch table has any hidden columns or data that helps
-    console.log('\n--- Branch Data Sample ---');
-    const { data: br } = await supabase.from('branch').select('*').limit(3);
-    console.log(br);
+    const { error: err } = await supabase.from('branch').insert({}).select();
+    if (err) {
+        console.log('Branch Insert Error (may reveal columns):', err.message);
+    }
+
+    // Use the types as reference
 }
 
 checkHierarchy();

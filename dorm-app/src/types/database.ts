@@ -114,6 +114,20 @@ export interface MaintenanceRequest {
     requested_at: string; // Timestamp string
     path_photos: string;
     completed_at: string | null; // Timestamp string
+    technician_id: number | null;
+    technician_comment: string | null;
+    technician_photo: string | null;
+    timeline?: MaintenanceTimeline[];
+}
+
+export interface MaintenanceTimeline {
+    id: number;
+    request_id: number;
+    technician_id: number | null;
+    status: string;
+    comment: string | null;
+    photo_url: string | null;
+    created_at: string;
 }
 
 export interface Equipment {

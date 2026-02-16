@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Building2, LayoutGrid, DollarSign, Wrench, Gauge, Users, User, LogOut } from 'lucide-react';
@@ -6,16 +5,17 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { ManagerProvider, useManager } from './ManagerContext';
 
-export default function ManagerLayout({
+function ManagerLayoutContent({
     children,
 }: {
     children: React.ReactNode;
 }) {
+    const { selectedBranchId, setSelectedBranchId, setBranches, branches } = useManager();
     const pathname = usePathname();
     const router = useRouter();
     const [username, setUsername] = useState('Manager');
-    const [branchInfo, setBranchInfo] = useState<{ city: string; name: string } | null>(null);
 
     useEffect(() => {
         // In a real app, you might fetch this from a context or re-verify the session
@@ -23,29 +23,39 @@ export default function ManagerLayout({
         const storedName = localStorage.getItem('user_name');
         if (storedName) {
             setUsername(storedName);
-            fetchBranchInfo(storedName);
+            fetchBranches(storedName);
         } else {
             // Fallback for dev/testing if no login
             const defaultUser = 'Somsak Rakthai'; // Manager of Branch 1
             setUsername(defaultUser);
             localStorage.setItem('user_name', defaultUser);
-            fetchBranchInfo(defaultUser);
+            fetchBranches(defaultUser);
         }
     }, []);
 
-    const fetchBranchInfo = async (name: string) => {
+    const fetchBranches = async (name: string) => {
         try {
             const { data, error } = await supabase
                 .from('branch')
-                .select('branches_name, city')
-                .eq('manager_name', name)
-                .single();
+                .select('*')
+                .order('id');
+
+            if (error) throw error;
 
             if (data) {
-                setBranchInfo({ city: data.city, name: data.branches_name });
+                setBranches(data);
+
+                // Attempt to auto-select the manager's branch
+                const userBranch = data.find(b => b.manager_name === name);
+                if (userBranch) {
+                    setSelectedBranchId(userBranch.id);
+                } else {
+                    // Default to 'All' or keep 'All'
+                    setSelectedBranchId('All');
+                }
             }
         } catch (error) {
-            console.error('Error fetching branch:', error);
+            console.error('Error fetching branches:', error);
         }
     };
 
@@ -62,19 +72,35 @@ export default function ManagerLayout({
         { name: 'Manage Tenant', href: '/manager/tenants', icon: Users },
     ];
 
+    const currentBranch = branches.find(b => b.id === selectedBranchId);
+
     return (
         <div className="flex h-screen bg-gray-100 font-roboto">
             {/* Sidebar */}
             <aside className="w-64 bg-[#0047AB] text-white flex flex-col fixed inset-y-0 left-0 z-50 shadow-xl">
                 <div className="p-6 flex flex-col items-center border-b border-blue-400/30">
                     <Building2 size={64} className="mb-2" />
-                    {branchInfo ? (
-                        <div className="text-center">
-                            <h1 className="text-lg font-bold uppercase tracking-wider">{branchInfo.city}</h1>
-                            <p className="text-sm font-light text-blue-200">{branchInfo.name}</p>
+
+                    {/* Branch Selector */}
+                    <div className="w-full mt-4">
+                        <label className="text-xs text-blue-200 uppercase font-bold tracking-wider mb-1 block text-center">Select Branch</label>
+                        <select
+                            value={selectedBranchId}
+                            onChange={(e) => setSelectedBranchId(e.target.value === 'All' ? 'All' : Number(e.target.value))}
+                            className="w-full bg-[#003380] text-white text-sm rounded p-2 focus:outline-none border border-blue-500 text-center appearance-none cursor-pointer hover:bg-[#002a6b] transition-colors"
+                            style={{ textAlignLast: 'center' }}
+                        >
+                            <option value="All">All Branches</option>
+                            {branches.map(b => (
+                                <option key={b.id} value={b.id}>{b.branches_name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {currentBranch && (
+                        <div className="mt-2 text-center">
+                            <h1 className="text-lg font-bold uppercase tracking-wider">{currentBranch.city}</h1>
                         </div>
-                    ) : (
-                        <span className="text-xl font-bold tracking-widest">DORM</span>
                     )}
                 </div>
 
@@ -124,5 +150,17 @@ export default function ManagerLayout({
                 {children}
             </main>
         </div>
+    );
+}
+
+export default function ManagerLayout({
+    children,
+}: {
+    children: React.ReactNode;
+}) {
+    return (
+        <ManagerProvider>
+            <ManagerLayoutContent>{children}</ManagerLayoutContent>
+        </ManagerProvider>
     );
 }
