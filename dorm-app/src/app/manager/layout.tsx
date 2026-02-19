@@ -15,12 +15,27 @@ function ManagerLayoutContent({
     const { selectedBranchId, setSelectedBranchId, setBranches, branches } = useManager();
     const pathname = usePathname();
     const router = useRouter();
-    const [username, setUsername] = useState('Manager');
+    const [username, setUsername] = useState('Manager'); // [RESTORED]
+    const [userRole, setUserRole] = useState('Manager'); // [NEW] - Default to Manager
+    const [isManagerLocked, setIsManagerLocked] = useState(false);
 
     useEffect(() => {
         // In a real app, you might fetch this from a context or re-verify the session
         // eslint-disable-next-line react-hooks/exhaustive-deps
         const storedName = localStorage.getItem('user_name');
+
+        // [NEW] Check lock status on mount
+        const storedRole = localStorage.getItem('user_role');
+        const storedBranchId = localStorage.getItem('user_branch_id');
+
+        if (storedRole) {
+            setUserRole(storedRole);
+        }
+
+        if (storedRole === 'Manager' && storedBranchId) {
+            setIsManagerLocked(true);
+        }
+
         if (storedName) {
             setUsername(storedName);
             fetchBranches(storedName);
@@ -45,13 +60,22 @@ function ManagerLayoutContent({
             if (data) {
                 setBranches(data);
 
-                // Attempt to auto-select the manager's branch
-                const userBranch = data.find(b => b.manager_name === name);
-                if (userBranch) {
-                    setSelectedBranchId(userBranch.id);
+                // Check stored role and branch_id
+                const storedRole = localStorage.getItem('user_role');
+                const storedBranchId = localStorage.getItem('user_branch_id');
+
+                if (storedRole === 'Manager' && storedBranchId) {
+                    // Force selection to assigned branch
+                    setSelectedBranchId(Number(storedBranchId));
                 } else {
-                    // Default to 'All' or keep 'All'
-                    setSelectedBranchId('All');
+                    // Admin or no specific branch assigned
+                    // Attempt to auto-select the manager's branch if name matches, else All
+                    const userBranch = data.find(b => b.manager_name === name);
+                    if (userBranch) {
+                        setSelectedBranchId(userBranch.id);
+                    } else {
+                        setSelectedBranchId('All');
+                    }
                 }
             }
         } catch (error) {
@@ -87,7 +111,11 @@ function ManagerLayoutContent({
                         <select
                             value={selectedBranchId}
                             onChange={(e) => setSelectedBranchId(e.target.value === 'All' ? 'All' : Number(e.target.value))}
-                            className="w-full bg-[#003380] text-white text-sm rounded p-2 focus:outline-none border border-blue-500 text-center appearance-none cursor-pointer hover:bg-[#002a6b] transition-colors"
+                            disabled={isManagerLocked}
+                            className={`w-full bg-[#003380] text-white text-sm rounded p-2 focus:outline-none border border-blue-500 text-center appearance-none transition-colors ${isManagerLocked
+                                ? 'opacity-50 cursor-not-allowed'
+                                : 'cursor-pointer hover:bg-[#002a6b]'
+                                }`}
                             style={{ textAlignLast: 'center' }}
                         >
                             <option value="All">All Branches</option>
@@ -131,7 +159,7 @@ function ManagerLayoutContent({
                         </div>
                         <div className="ml-3 overflow-hidden">
                             <p className="text-sm font-bold truncate">{username}</p>
-                            <p className="text-xs text-blue-300">Manager</p>
+                            <p className="text-xs text-blue-300">{userRole}</p>
                         </div>
                     </div>
 

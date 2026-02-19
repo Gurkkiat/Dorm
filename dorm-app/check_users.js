@@ -6,7 +6,7 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function checkUsers() {
-    const { data: users, error } = await supabase.from('users').select('*').limit(1);
+    const { data: users, error } = await supabase.from('users').select('*').eq('username', 'manager_a').single();
     console.log('Error:', error);
     if (users && users.length > 0) {
         console.log('User keys:', Object.keys(users[0]));

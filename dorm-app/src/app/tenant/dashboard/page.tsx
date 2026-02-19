@@ -48,7 +48,7 @@ export default function TenantDashboard() {
 
                 // 1. Get User Details
                 const { data: userData } = await supabase
-                    .from('user')
+                    .from('users')
                     .select('full_name')
                     .eq('id', storedUserId)
                     .single();

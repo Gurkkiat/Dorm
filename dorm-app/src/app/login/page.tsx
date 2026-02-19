@@ -41,6 +41,11 @@ export default function LoginPage() {
                 localStorage.setItem('user_id', data.id.toString());
                 localStorage.setItem('user_role', data.role);
                 localStorage.setItem('user_name', data.full_name);
+                if (data.branch_id) {
+                    localStorage.setItem('user_branch_id', data.branch_id.toString());
+                } else {
+                    localStorage.removeItem('user_branch_id');
+                }
             }
 
             // 3. Redirect based on role

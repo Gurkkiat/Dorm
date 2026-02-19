@@ -57,7 +57,7 @@ export default function ManagerPaymentsPage() {
             let query = supabase
                 .from('invoice')
                 .select('*, contract:contract_id ( user:user_id ( full_name ), room:room_id ( room_number, building:building_id ( branch_id ) ) )')
-                .eq('status', 'Pending')
+                .in('status', ['Pending', 'Unpaid'])
                 .order('paid_date', { ascending: false });
 
             if (selectedBranchId !== 'All') {
@@ -82,17 +82,39 @@ export default function ManagerPaymentsPage() {
         }
     }
 
-    const handleApprove = async (id: number) => {
-        if (!confirm(`Approve Invoice #${id}?`)) return;
+    const handleApprove = async (invoice: InvoiceWithDetails) => {
+        const isIssuance = !invoice.payment_slip;
+        const confirmMsg = isIssuance
+            ? `Approve Invoice #${invoice.id} for payment? (Status will become Unpaid)`
+            : `Confirm Payment for Invoice #${invoice.id}? (Status will become Paid)`;
+
+        if (!confirm(confirmMsg)) return;
+
         try {
+            const newStatus = isIssuance ? 'Unpaid' : 'Paid';
             const { error } = await supabase
                 .from('invoice')
-                .update({ status: 'Paid' })
-                .eq('id', id);
+                .update({ status: newStatus })
+                .eq('id', invoice.id);
 
             if (error) throw error;
-            setData(prev => prev.filter(inv => inv.id !== id));
-            alert(`Invoice #${id} approved.`);
+
+            // If paying Entry Fee, activate the Contract
+            if (!isIssuance && invoice.type === 'entry_fee') {
+                const { error: contractError } = await supabase
+                    .from('contract')
+                    .update({ status: 'complete' }) // Mark contract as Active/Complete
+                    .eq('id', invoice.contract_id);
+
+                if (contractError) console.error('Error activating contract:', contractError);
+            }
+
+            // Optimistic Update
+            setData(prev => prev.map(inv =>
+                inv.id === invoice.id ? { ...inv, status: newStatus } : inv
+            ));
+
+            alert(isIssuance ? `Invoice #${invoice.id} approved. Waiting for tenant payment.` : `Invoice #${invoice.id} marked as Paid. Contract Activated.`);
         } catch (error) {
             console.error('Error approving invoice:', error);
             alert('Error approving invoice.');
@@ -207,7 +229,7 @@ export default function ManagerPaymentsPage() {
                                 <th className="py-4 px-4">Breakdown</th>
                                 <th className="py-4 px-4">Total</th>
                                 <th className="py-4 px-4">Due Date</th>
-                                <th className="py-4 px-4">Slip</th>
+                                <th className="py-4 px-4">Status</th>
                                 <th className="py-4 px-4 rounded-r-lg text-center">Action</th>
                             </tr>
                         </thead>
@@ -248,41 +270,36 @@ export default function ManagerPaymentsPage() {
                                         {row.due_date ? new Date(row.due_date).toLocaleDateString() : '-'}
                                     </td>
                                     <td className="py-4 px-4">
-                                        {row.payment_slip ? (
-                                            <a
-                                                href={row.payment_slip}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-1 text-blue-500 hover:text-blue-700 text-xs font-medium"
-                                            >
-                                                <Eye size={14} /> View
-                                            </a>
-                                        ) : (
-                                            <span className="text-gray-300 text-xs">-</span>
-                                        )}
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${row.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'}`}>
+                                            {row.status}
+                                        </span>
                                     </td>
                                     <td className="py-4 px-4 text-center">
-                                        <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={() => handleApprove(row.id)}
-                                                className="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shadow-sm"
-                                            >
-                                                Approve
-                                            </button>
-                                            <button
-                                                onClick={() => handleReject(row.id)}
-                                                className="bg-red-50 text-red-500 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border border-red-100"
-                                            >
-                                                Reject
-                                            </button>
-                                        </div>
+                                        {row.status === 'Pending' ? (
+                                            <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => handleApprove(row)}
+                                                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shadow-sm"
+                                                >
+                                                    {row.payment_slip ? 'Confirm Payment' : 'Approve Issue'}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleReject(row.id)}
+                                                    className="bg-red-50 text-red-500 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border border-red-100"
+                                                >
+                                                    Reject
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <span className="text-xs text-gray-400 italic">Waiting for Tenant</span>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
                             {filteredData.length === 0 && (
                                 <tr>
                                     <td colSpan={6} className="py-12 text-center text-gray-400">
-                                        No pending invoices found.
+                                        No pending or unpaid invoices found.
                                     </td>
                                 </tr>
                             )}

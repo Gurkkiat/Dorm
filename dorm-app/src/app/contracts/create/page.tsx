@@ -22,8 +22,9 @@ export default function CreateContractPage() {
     const [contractNumberDisplay, setContractNumberDisplay] = useState('Select Branch...');
 
     // Room Data State
-    const [rooms, setRooms] = useState<(Room & { residentCount: number })[]>([]);
+    const [rooms, setRooms] = useState<(Room & { residentCount: number; hasPrimaryTenant: boolean })[]>([]);
     const [roomType, setRoomType] = useState<'vacant' | 'occupied'>('vacant');
+    const [nextContractId, setNextContractId] = useState<number>(0);
 
     // Form Data State
     const [formData, setFormData] = useState({
@@ -45,6 +46,7 @@ export default function CreateContractPage() {
         is_primary_tenant: 'TRUE',
     });
 
+
     // Form Aux States
     const [petOption, setPetOption] = useState<'none' | 'dog' | 'cat' | 'other'>('none');
     const [petOtherText, setPetOtherText] = useState('');
@@ -64,26 +66,27 @@ export default function CreateContractPage() {
                 if (branchError) throw branchError;
                 setBranches(branchData || []);
 
-                // Set default branch if manager has one (Optional, but good UX)
-                const storedName = localStorage.getItem('user_name') || 'Somsak Rakthai';
-                const managerBranch = branchData?.find(b => b.branches_name.includes(storedName) || b.id === 387); // Hack for Admin User = 387 or logic
-                // Actually, let's just default to the first one or let user pick.
-                // Or better: try to find the one assigned to current user
-                const { data: userBranch } = await supabase
-                    .from('branch')
+                // 2. Fetch Latest Contract ID for Preview
+                const { data: latestContract, error: contractError } = await supabase
+                    .from('contract')
                     .select('id')
-                    .eq('manager_name', storedName)
+                    .order('id', { ascending: false })
+                    .limit(1)
                     .single();
 
-                if (userBranch) {
-                    setSelectedBranchId(userBranch.id.toString());
-                } else if (branchData && branchData.length > 0) {
-                    setSelectedBranchId(branchData[0].id.toString());
+                if (!contractError && latestContract) {
+                    setNextContractId(latestContract.id + 1);
+                } else {
+                    setNextContractId(1); // Default if no contracts exist
                 }
 
-                // ... keep existing resident counting logic if needed, but it depends on rooms which depend on building
-                // So we postpone fetching rooms until building is selected.
+                // Check for logged-in Manager's branch
+                const storedRole = localStorage.getItem('user_role');
+                const storedBranchId = localStorage.getItem('user_branch_id');
 
+                if (storedRole === 'Manager' && storedBranchId) {
+                    setSelectedBranchId(storedBranchId);
+                }
             } catch (error) {
                 console.error('Error fetching initial data:', error);
             } finally {
@@ -153,18 +156,26 @@ export default function CreateContractPage() {
 
                 if (contractsError) throw contractsError;
 
-                // Calculate occupancy
+                // Calculate occupancy and check for Primary Tenant
                 const occupancyMap = new Map<number, number>();
+                const primaryTenantMap = new Map<number, boolean>();
+
                 activeContracts?.forEach(c => {
                     occupancyMap.set(c.room_id, (occupancyMap.get(c.room_id) || 0) + 1);
+                    // Check if any contract in this room belongs to a primary tenant
+                    // @ts-ignore: Supabase join typing can be tricky
+                    if (c.user?.is_primary_tenant) {
+                        primaryTenantMap.set(c.room_id, true);
+                    }
                 });
 
                 const roomsWithCount = roomsData.map(r => ({
                     ...r,
-                    residentCount: occupancyMap.get(r.id) || 0
+                    residentCount: occupancyMap.get(r.id) || 0,
+                    hasPrimaryTenant: primaryTenantMap.get(r.id) || false
                 }));
 
-                setRooms(roomsWithCount as (Room & { residentCount: number })[]);
+                setRooms(roomsWithCount as (Room & { residentCount: number; hasPrimaryTenant: boolean })[]);
 
             } catch (error) {
                 console.error("Error fetching rooms:", error);
@@ -178,11 +189,11 @@ export default function CreateContractPage() {
     useEffect(() => {
         const branch = branches.find(b => b.id.toString() === selectedBranchId);
         if (branch) {
-            setContractNumberDisplay(`${branch.city}_${branch.branches_name}_Waiting...`);
+            setContractNumberDisplay(`${branch.city}_${branch.branches_name}_${nextContractId}`);
         } else {
             setContractNumberDisplay('Select Branch...');
         }
-    }, [selectedBranchId, branches]);
+    }, [selectedBranchId, branches, nextContractId]);
 
     // Handle room type change effects
     useEffect(() => {
@@ -326,11 +337,33 @@ export default function CreateContractPage() {
                         alert('Selected room is not vacant.');
                         updated.room_id = '';
                     }
+                    // Force TRUE for vacant rooms (first tenant must be primary)
+                    updated.is_primary_tenant = 'TRUE';
                 } else if (roomType === 'occupied') {
                     if (room && room.residentCount >= 2) {
                         alert('Room is full (Max 2 residents).');
                         updated.room_id = '';
+                    } else if (room) {
+                        // If occupied, check if existing resident is primary
+                        if (room.hasPrimaryTenant) {
+                            // If primary exists, new one MUST be roommate (FALSE)
+                            updated.is_primary_tenant = 'FALSE';
+                        } else {
+                            // If NO primary exists (rare edge case or data issue), force TRUE
+                            updated.is_primary_tenant = 'TRUE';
+                        }
                     }
+                }
+            }
+
+            // Check manual toggle of is_primary_tenant
+            if (name === 'is_primary_tenant') {
+                const rId = parseInt(formData.room_id);
+                const room = rooms.find(r => r.id === rId);
+
+                if (value === 'FALSE' && room && !room.hasPrimaryTenant) {
+                    alert('This room needs a Primary Tenant first. You cannot create a Roommate contract in a room without a Primary Tenant.');
+                    updated.is_primary_tenant = 'TRUE';
                 }
             }
 
@@ -392,10 +425,21 @@ export default function CreateContractPage() {
             }
         }
 
-        setSubmitting(true);
-
         const rId = parseInt(formData.room_id);
         const room = rooms.find(r => r.id === rId);
+
+        if (!room) {
+            alert('Please select a room.');
+            return;
+        }
+
+        // Primary Tenant Rule Check
+        if (formData.is_primary_tenant === 'FALSE' && !room.hasPrimaryTenant) {
+            alert('Cannot create a Roommate contract in a room without a Primary Tenant.');
+            return;
+        }
+
+        setSubmitting(true);
 
         // Double check room capacity based on type
         if (roomType === 'vacant') {
@@ -460,16 +504,18 @@ export default function CreateContractPage() {
 
             if (contractError) throw contractError;
 
-            // 3.1 Update Contract Number using ACTUAL ID
-            // Find selected branch info
-            const currentBranch = branches.find(b => b.id.toString() === selectedBranchId);
+            // 3.1 Update Contract Number to {City}_{Branch}_{ID} format
+            if (contractData) {
+                // We use the ACTUAL ID from the inserted contract, which is safe from race conditions for display
+                const currentBranch = branches.find(b => b.id.toString() === selectedBranchId);
 
-            if (currentBranch && contractData) {
-                const newContractNumber = `${currentBranch.city}_${currentBranch.branches_name}_${contractData.id}`;
-                await supabase
-                    .from('contract')
-                    .update({ contract_number: newContractNumber })
-                    .eq('id', contractData.id);
+                if (currentBranch) {
+                    const newContractNumber = `${currentBranch.city}_${currentBranch.branches_name}_${contractData.id}`;
+                    await supabase
+                        .from('contract')
+                        .update({ contract_number: newContractNumber })
+                        .eq('id', contractData.id);
+                }
             }
 
             // 4. Update Room status and Recalculate Residents from DB (Self-Correcting)
@@ -508,7 +554,7 @@ export default function CreateContractPage() {
                         room_elec_cost: 0,
                         room_repair_cost: 0,
                         room_total_cost: 5000, // Total = Deposit
-                        status: 'pending',
+                        status: 'Pending', // Initial status is Pending (Waiting for Manager Approval)
                         type: 'entry_fee',
                         bill_date: billDate.toISOString(),
                         due_date: dueDate.toISOString(),
@@ -679,23 +725,29 @@ export default function CreateContractPage() {
                                 value={formData.nation}
                                 onChange={handleChange}
                                 className={inputClass}
-                                placeholder="Thailand"
                             />
                         </div>
                     </div>
 
-                    {/* Row 4: Room, Move in, Durations, Move out */}
-                    <div className="grid grid-cols-4 gap-4 mb-4">
-                        <div className="flex flex-col">
-                            <div className="flex justify-between items-center mb-1">
-                                <label className={labelClass}>Select Branch & Building</label>
-                            </div>
-
-                            {/* Branch Selection */}
+                    {/* Row 4: Location (Branch, Building, Room) */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        {/* Branch */}
+                        <div>
+                            <label className={labelClass}>Branch</label>
                             <select
                                 value={selectedBranchId}
                                 onChange={(e) => setSelectedBranchId(e.target.value)}
-                                className={`${selectClass} mb-2`}
+                                className={`${selectClass} ${typeof window !== 'undefined' &&
+                                    localStorage.getItem('user_role') === 'Manager' &&
+                                    localStorage.getItem('user_branch_id')
+                                    ? 'opacity-70 cursor-not-allowed'
+                                    : ''
+                                    }`}
+                                disabled={
+                                    typeof window !== 'undefined' &&
+                                    localStorage.getItem('user_role') === 'Manager' &&
+                                    !!localStorage.getItem('user_branch_id')
+                                }
                             >
                                 <option value="">Select Branch</option>
                                 {branches.map(b => (
@@ -704,12 +756,15 @@ export default function CreateContractPage() {
                                     </option>
                                 ))}
                             </select>
+                        </div>
 
-                            {/* Building Selection */}
+                        {/* Building */}
+                        <div>
+                            <label className={labelClass}>Building</label>
                             <select
                                 value={selectedBuildingId}
                                 onChange={(e) => setSelectedBuildingId(e.target.value)}
-                                className={`${selectClass} mb-2`}
+                                className={selectClass}
                                 disabled={!selectedBranchId}
                             >
                                 <option value="">Select Building</option>
@@ -719,7 +774,10 @@ export default function CreateContractPage() {
                                     </option>
                                 ))}
                             </select>
+                        </div>
 
+                        {/* Room */}
+                        <div>
                             <div className="flex justify-between items-center mb-1">
                                 <label className={labelClass}>Room</label>
                                 {/* Room Type Toggle */}
@@ -761,6 +819,10 @@ export default function CreateContractPage() {
                                     ))}
                             </select>
                         </div>
+                    </div>
+
+                    {/* Row 5: Dates */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                         <div>
                             <label className={labelClass}>Move in</label>
                             <input
@@ -773,7 +835,7 @@ export default function CreateContractPage() {
                             />
                         </div>
                         <div>
-                            <label className={labelClass}>Durations</label>
+                            <label className={labelClass}>Durations (Months)</label>
                             <input
                                 type="number"
                                 name="durations"
