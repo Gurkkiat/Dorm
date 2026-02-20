@@ -276,7 +276,7 @@ export default function ManagerPaymentsPage() {
                 {/* Monthly Goals / Stats (Simple Placeholder for now) */}
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between h-48">
                     <div className="flex justify-between items-center">
-                        <h3 className="font-bold text-gray-700">Pending Invoices</h3>
+                        <h3 className="font-bold text-gray-700">Waiting Invoices</h3>
                         <span className="bg-blue-100 text-blue-600 py-1 px-3 rounded-full text-xs font-bold">Monthly</span>
                     </div>
                     <div className="flex-1 flex items-center justify-center">

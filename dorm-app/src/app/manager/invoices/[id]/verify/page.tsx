@@ -54,12 +54,19 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
 
 
         try {
+            const updatePayload: any = {
+                status: newStatus,
+                paid_date: newStatus === 'Paid' ? new Date().toISOString() : null
+            };
+
+            // If we are rejecting a slip, clear it
+            if (newStatus === 'Unpaid' && invoice.payment_slip) {
+                updatePayload.payment_slip = null;
+            }
+
             const { error } = await supabase
                 .from('invoice')
-                .update({
-                    status: newStatus,
-                    paid_date: newStatus === 'Paid' ? new Date().toISOString() : null
-                })
+                .update(updatePayload)
                 .eq('id', invoice.id);
 
             if (error) throw error;
@@ -136,7 +143,7 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
                     <div className="flex justify-between border-b border-white/50 pb-2 mb-2 font-bold text-lg">
                         <span className="w-1/2">Description</span>
                         <span className="w-1/6 text-center">Unit</span>
-                        <span className="w-1/6 text-right">Prize</span>
+                        <span className="w-1/6 text-right">Price</span>
                         <span className="w-1/6 text-right">Total</span>
                     </div>
 
@@ -156,16 +163,6 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
 
                 <div className="border-b border-white/30 my-6" />
 
-                {/* Slip Viewer Button - [NEW] */}
-                <div className="mb-6 text-center">
-                    <button
-                        onClick={() => setIsSlipOpen(true)}
-                        className="bg-white/20 hover:bg-white/30 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 w-full transition-colors"
-                    >
-                        View Payment Slip
-                    </button>
-                </div>
-
                 {/* Actions */}
                 <div className="text-center">
                     {invoice.status === 'Paid' ? (
@@ -183,38 +180,69 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
                         </div>
                     ) : (
                         <>
-                            <p className="text-lg font-bold mb-6">
+                            <p className="text-lg font-bold mb-6 text-center">
                                 {invoice.payment_slip
-                                    ? "Do you want to confirm the tenant's payment?"
-                                    : "Ready to issue this invoice to the tenant?"}
+                                    ? "Please review the payment slip before approval."
+                                    : "Please review the invoice before issuing."}
                             </p>
 
                             <div className="flex justify-center gap-6">
-                                {/* Approve / Issue Button */}
-                                <button
-                                    disabled={processing}
-                                    onClick={() => handleAction(invoice.payment_slip ? 'Paid' : 'Unpaid')}
-                                    className={`bg-white rounded-xl p-2 shadow-lg transition-transform group ${processing ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'}`}
-                                    title={invoice.payment_slip ? "Confirm Payment" : "Issue Invoice"}
-                                >
-                                    <div className="bg-green-500 rounded-lg p-3 flex items-center gap-2">
-                                        <Check size={32} className="text-white" strokeWidth={3} />
-                                        {!invoice.payment_slip && <span className="text-white font-bold pr-2">Issue</span>}
-                                    </div>
-                                </button>
+                                {invoice.payment_slip ? (
+                                    <>
+                                        {/* Approve Payment Button */}
+                                        <button
+                                            disabled={processing}
+                                            onClick={() => handleAction('Paid')}
+                                            className={`bg-white rounded-xl p-2 shadow-lg transition-transform group ${processing ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'}`}
+                                            title="Approve Payment"
+                                        >
+                                            <div className="bg-green-500 rounded-lg p-3 flex items-center gap-2">
+                                                <Check size={28} className="text-white" strokeWidth={3} />
+                                                <span className="text-white font-bold pr-2">Approve</span>
+                                            </div>
+                                        </button>
 
-                                {/* Reject Button - Only if there is a slip to reject contextually, or if we want to allow 'Unpaid' (Reject) explicitly */}
-                                {invoice.payment_slip && (
-                                    <button
-                                        disabled={processing}
-                                        onClick={() => handleAction('Unpaid')}
-                                        className={`bg-white rounded-xl p-2 shadow-lg transition-transform group ${processing ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'}`}
-                                        title="Reject Payment"
-                                    >
-                                        <div className="bg-red-500 rounded-lg p-3">
-                                            <X size={32} className="text-white" strokeWidth={3} />
-                                        </div>
-                                    </button>
+                                        {/* Reject Payment Button */}
+                                        <button
+                                            disabled={processing}
+                                            onClick={() => handleAction('Unpaid')}
+                                            className={`bg-white rounded-xl p-2 shadow-lg transition-transform group ${processing ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'}`}
+                                            title="Reject Payment"
+                                        >
+                                            <div className="bg-red-500 rounded-lg p-3 flex items-center gap-2">
+                                                <X size={28} className="text-white" strokeWidth={3} />
+                                                <span className="text-white font-bold pr-2">Reject</span>
+                                            </div>
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Issue Invoice (Approve) Button */}
+                                        <button
+                                            disabled={processing}
+                                            onClick={() => handleAction('Unpaid')}
+                                            className={`bg-white rounded-xl p-2 shadow-lg transition-transform group ${processing ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'}`}
+                                            title="Issue Invoice"
+                                        >
+                                            <div className="bg-green-500 rounded-lg p-3 flex items-center gap-2">
+                                                <Check size={28} className="text-white" strokeWidth={3} />
+                                                <span className="text-white font-bold pr-2">Approve Issue</span>
+                                            </div>
+                                        </button>
+
+                                        {/* Placeholder Reject Button */}
+                                        <button
+                                            disabled={processing}
+                                            onClick={(e) => { e.preventDefault(); /* No action */ }}
+                                            className="bg-white rounded-xl p-2 shadow-lg transition-transform group hover:scale-110 cursor-pointer"
+                                            title="Reject (Placeholder)"
+                                        >
+                                            <div className="bg-red-500 rounded-lg p-3 flex items-center gap-2">
+                                                <X size={28} className="text-white" strokeWidth={3} />
+                                                <span className="text-white font-bold pr-2">Reject</span>
+                                            </div>
+                                        </button>
+                                    </>
                                 )}
                             </div>
                         </>
