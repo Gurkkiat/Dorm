@@ -84,7 +84,7 @@ export default function CreateContractPage() {
                 const storedRole = localStorage.getItem('user_role');
                 const storedBranchId = localStorage.getItem('user_branch_id');
 
-                if (storedRole === 'Manager' && storedBranchId) {
+                if (storedRole && storedRole.toLowerCase() === 'manager' && storedBranchId) {
                     setSelectedBranchId(storedBranchId);
                 }
             } catch (error) {
@@ -738,14 +738,14 @@ export default function CreateContractPage() {
                                 value={selectedBranchId}
                                 onChange={(e) => setSelectedBranchId(e.target.value)}
                                 className={`${selectClass} ${typeof window !== 'undefined' &&
-                                    localStorage.getItem('user_role') === 'Manager' &&
+                                    localStorage.getItem('user_role')?.toLowerCase() === 'manager' &&
                                     localStorage.getItem('user_branch_id')
                                     ? 'opacity-70 cursor-not-allowed'
                                     : ''
                                     }`}
                                 disabled={
                                     typeof window !== 'undefined' &&
-                                    localStorage.getItem('user_role') === 'Manager' &&
+                                    localStorage.getItem('user_role')?.toLowerCase() === 'manager' &&
                                     !!localStorage.getItem('user_branch_id')
                                 }
                             >

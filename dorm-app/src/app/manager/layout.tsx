@@ -32,7 +32,7 @@ function ManagerLayoutContent({
             setUserRole(storedRole);
         }
 
-        if (storedRole === 'Manager' && storedBranchId) {
+        if (storedRole && storedRole.toLowerCase() === 'manager' && storedBranchId) {
             setIsManagerLocked(true);
         }
 
@@ -64,11 +64,14 @@ function ManagerLayoutContent({
                 const storedRole = localStorage.getItem('user_role');
                 const storedBranchId = localStorage.getItem('user_branch_id');
 
-                if (storedRole === 'Manager' && storedBranchId) {
+                if (storedRole && storedRole.toLowerCase() === 'manager' && storedBranchId) {
                     // Force selection to assigned branch
                     setSelectedBranchId(Number(storedBranchId));
+                } else if (storedRole === 'Admin' || storedRole === 'admin') {
+                    // Admin defaults to All
+                    setSelectedBranchId('All');
                 } else {
-                    // Admin or no specific branch assigned
+                    // No specific branch assigned (or fallback)
                     // Attempt to auto-select the manager's branch if name matches, else All
                     const userBranch = data.find(b => b.manager_name === name);
                     if (userBranch) {
