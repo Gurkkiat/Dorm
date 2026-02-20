@@ -60,7 +60,7 @@ export default function TenantDashboard() {
                     .from('contract')
                     .select('id, room_id, status')
                     .eq('user_id', storedUserId)
-                    .in('status', ['Active', 'active'])
+                    .in('status', ['Active', 'active', 'complete', 'Complete'])
                     .single();
 
                 if (!contractData) {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useManager } from '../ManagerContext';
-import { Search, Gauge, Droplets, Zap, Calendar } from 'lucide-react';
+import { Search, Gauge, Droplets, Zap, Calendar, TrendingUp, DollarSign } from 'lucide-react';
 
 interface MeterReading {
     id: number;
@@ -14,6 +14,8 @@ interface MeterReading {
     prev_electricity: number;
     current_electricity: number;
     contract?: {
+        water_config_type?: 'unit' | 'fixed';
+        water_fixed_price?: number;
         room?: {
             room_number: string;
             building?: {
@@ -30,8 +32,8 @@ export default function ManagerMeterPage() {
     const [filteredData, setFilteredData] = useState<MeterReading[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
 
-    // Utility Rates (Display Only)
-    const WATER_RATE = 20;
+    // Rates
+    const WATER_RATE = 18; // Standardized to 18
     const ELEC_RATE = 5;
 
     useEffect(() => {
@@ -57,7 +59,7 @@ export default function ManagerMeterPage() {
         try {
             let query = supabase
                 .from('meter_reading')
-                .select('*, contract:contract_id ( room:room_id ( room_number, building:building_id ( branch_id ) ) )')
+                .select('*, contract:contract_id ( water_config_type, water_fixed_price, room:room_id ( room_number, building:building_id ( branch_id ) ) )')
                 .order('reading_date', { ascending: false });
 
             // Apply Branch Filter
@@ -65,7 +67,7 @@ export default function ManagerMeterPage() {
                 // Using !inner to filter by nested relation
                 query = supabase
                     .from('meter_reading')
-                    .select('*, contract:contract_id!inner ( room:room_id!inner ( room_number, building:building_id!inner ( branch_id ) ) )')
+                    .select('*, contract:contract_id!inner ( water_config_type, water_fixed_price, room:room_id!inner ( room_number, building:building_id!inner ( branch_id ) ) )')
                     .eq('contract.room.building.branch_id', selectedBranchId)
                     .order('reading_date', { ascending: false });
             }
@@ -83,6 +85,22 @@ export default function ManagerMeterPage() {
         }
     }
 
+    // Calculations
+    const calculateElecCost = (reading: MeterReading) => {
+        return (reading.current_electricity - reading.prev_electricity) * ELEC_RATE;
+    };
+
+    const calculateWaterCost = (reading: MeterReading) => {
+        if (reading.contract?.water_config_type === 'fixed') {
+            return reading.contract.water_fixed_price || 100;
+        }
+        return (reading.current_water - reading.prev_water) * WATER_RATE;
+    };
+
+    const totalElecRevenue = filteredData.reduce((sum, r) => sum + calculateElecCost(r), 0);
+    const totalWaterRevenue = filteredData.reduce((sum, r) => sum + calculateWaterCost(r), 0);
+    const totalRevenue = totalElecRevenue + totalWaterRevenue;
+
     if (loading) return <div className="p-8 text-center text-gray-500">Loading Dashboard...</div>;
 
     const currentDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -99,51 +117,60 @@ export default function ManagerMeterPage() {
             </div>
 
             {/* Widgets Section */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-                {/* Total Readings Card (Blue Theme) */}
-                <div className="bg-gradient-to-br from-[#0047AB] to-[#003380] rounded-2xl p-6 text-white shadow-lg relative overflow-hidden h-48 flex flex-col justify-between">
+                {/* Total Revenue Card */}
+                <div className="bg-gradient-to-br from-[#0047AB] to-[#003380] rounded-2xl p-6 text-white shadow-lg relative overflow-hidden h-40 flex flex-col justify-between">
                     <div className="absolute top-0 right-0 p-4 opacity-10 transform translate-x-4 -translate-y-4">
-                        <Gauge size={120} />
+                        <DollarSign size={100} />
                     </div>
-
-                    <div className="flex justify-between items-start z-10">
-                        <div>
-                            <p className="text-blue-200 text-sm font-medium">Total Readings</p>
-                            <h2 className="text-4xl font-bold mt-2">{data.length}</h2>
-                        </div>
-                        <div className="bg-white/20 p-2 rounded-full backdrop-blur-sm">
-                            <Calendar size={20} />
-                        </div>
+                    <div>
+                        <p className="text-blue-200 text-sm font-medium">Total Estimated Revenue</p>
+                        <h2 className="text-3xl font-bold mt-1">฿ {totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h2>
                     </div>
-                    <div className="z-10">
-                        <p className="text-xs text-blue-200 mt-4">Recorded Entries</p>
+                    <div className="z-10 flex gap-2 mt-2">
+                        <span className="bg-white/20 px-2 py-1 rounded text-xs flex items-center gap-1">
+                            <Zap size={10} className="text-yellow-300" />
+                            {totalElecRevenue.toLocaleString()}
+                        </span>
+                        <span className="bg-white/20 px-2 py-1 rounded text-xs flex items-center gap-1">
+                            <Droplets size={10} className="text-cyan-300" />
+                            {totalWaterRevenue.toLocaleString()}
+                        </span>
                     </div>
                 </div>
 
-                {/* Rates Widget */}
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between h-48">
-                    <div className="flex justify-between items-center">
-                        <h3 className="font-bold text-gray-700">Current Rates</h3>
-                        <span className="bg-blue-100 text-blue-600 py-1 px-3 rounded-full text-xs font-bold">Standard</span>
+                {/* Electricity Summary */}
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between h-40 relative overflow-hidden">
+                    <div className="absolute -right-6 -top-6 text-yellow-50">
+                        <Zap size={100} />
                     </div>
+                    <div>
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="p-2 bg-yellow-100 rounded-lg text-yellow-600">
+                                <Zap size={18} />
+                            </div>
+                            <span className="font-bold text-gray-700">Electricity</span>
+                        </div>
+                        <h3 className="text-2xl font-bold text-gray-900">฿ {totalElecRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+                        <p className="text-xs text-gray-400 mt-1">based on {ELEC_RATE} THB/Unit</p>
+                    </div>
+                </div>
 
-                    <div className="flex-1 flex gap-8 items-center justify-center">
-                        <div className="text-center">
-                            <div className="bg-cyan-100 p-3 rounded-full text-cyan-600 mx-auto w-12 h-12 flex items-center justify-center mb-2">
-                                <Droplets size={24} />
+                {/* Water Summary */}
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between h-40 relative overflow-hidden">
+                    <div className="absolute -right-6 -top-6 text-cyan-50">
+                        <Droplets size={100} />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="p-2 bg-cyan-100 rounded-lg text-cyan-600">
+                                <Droplets size={18} />
                             </div>
-                            <p className="text-2xl font-bold text-gray-800">{WATER_RATE}</p>
-                            <p className="text-gray-400 text-xs">THB / Unit</p>
+                            <span className="font-bold text-gray-700">Water</span>
                         </div>
-                        <div className="w-px h-16 bg-gray-200"></div>
-                        <div className="text-center">
-                            <div className="bg-yellow-100 p-3 rounded-full text-yellow-600 mx-auto w-12 h-12 flex items-center justify-center mb-2">
-                                <Zap size={24} />
-                            </div>
-                            <p className="text-2xl font-bold text-gray-800">{ELEC_RATE}</p>
-                            <p className="text-gray-400 text-xs">THB / Unit</p>
-                        </div>
+                        <h3 className="text-2xl font-bold text-gray-900">฿ {totalWaterRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+                        <p className="text-xs text-gray-400 mt-1">Unit & Fixed Rates</p>
                     </div>
                 </div>
             </div>
@@ -176,47 +203,54 @@ export default function ManagerMeterPage() {
                             </tr>
                         </thead>
                         <tbody className="text-sm divide-y divide-gray-50">
-                            {filteredData.map((row) => (
-                                <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
-                                    <td className="py-4 px-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="bg-blue-50 p-2 rounded-lg text-blue-600 font-bold w-10 h-10 flex items-center justify-center">
-                                                {row.contract?.room?.room_number || '-'}
+                            {filteredData.map((row) => {
+                                const waterCost = calculateWaterCost(row);
+                                const elecCost = calculateElecCost(row);
+
+                                return (
+                                    <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
+                                        <td className="py-4 px-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-blue-50 p-2 rounded-lg text-blue-600 font-bold w-10 h-10 flex items-center justify-center">
+                                                    {row.contract?.room?.room_number || '-'}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-gray-800">Room {row.contract?.room?.room_number || '-'}</p>
+                                                    <p className="text-xs text-gray-500">{new Date(row.reading_date).toLocaleDateString()}</p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <p className="font-bold text-gray-800">Room {row.contract?.room?.room_number || '-'}</p>
-                                                <p className="text-xs text-gray-500">{new Date(row.reading_date).toLocaleDateString()}</p>
+                                        </td>
+                                        <td className="py-4 px-4">
+                                            <div className="flex items-center gap-4">
+                                                <div className="text-right">
+                                                    <p className="text-xs text-gray-400 uppercase">Prev</p>
+                                                    <p className="font-medium text-gray-600">{row.prev_water.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                                </div>
+                                                <div className="text-gray-300">→</div>
+                                                <div>
+                                                    <p className="text-xs text-cyan-500 uppercase font-bold">Curr</p>
+                                                    <p className="font-bold text-gray-800">{row.current_water.toLocaleString(undefined, { minimumFractionDigits: 4 })}</p>
+                                                    <p className="text-xs text-cyan-600 font-bold mt-1">฿ {waterCost.toLocaleString()}</p>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </td>
-                                    <td className="py-4 px-4">
-                                        <div className="flex items-center gap-4">
-                                            <div className="text-right">
-                                                <p className="text-xs text-gray-400 uppercase">Prev</p>
-                                                <p className="font-medium text-gray-600">{row.prev_water.toLocaleString()}</p>
+                                        </td>
+                                        <td className="py-4 px-4">
+                                            <div className="flex items-center gap-4">
+                                                <div className="text-right">
+                                                    <p className="text-xs text-gray-400 uppercase">Prev</p>
+                                                    <p className="font-medium text-gray-600">{row.prev_electricity.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                                </div>
+                                                <div className="text-gray-300">→</div>
+                                                <div>
+                                                    <p className="text-xs text-yellow-500 uppercase font-bold">Curr</p>
+                                                    <p className="font-bold text-gray-800">{row.current_electricity.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                                    <p className="text-xs text-yellow-600 font-bold mt-1">฿ {elecCost.toLocaleString()}</p>
+                                                </div>
                                             </div>
-                                            <div className="text-gray-300">→</div>
-                                            <div>
-                                                <p className="text-xs text-cyan-500 uppercase font-bold">Curr</p>
-                                                <p className="font-bold text-gray-800">{row.current_water.toLocaleString()}</p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="py-4 px-4">
-                                        <div className="flex items-center gap-4">
-                                            <div className="text-right">
-                                                <p className="text-xs text-gray-400 uppercase">Prev</p>
-                                                <p className="font-medium text-gray-600">{row.prev_electricity.toLocaleString()}</p>
-                                            </div>
-                                            <div className="text-gray-300">→</div>
-                                            <div>
-                                                <p className="text-xs text-yellow-500 uppercase font-bold">Curr</p>
-                                                <p className="font-bold text-gray-800">{row.current_electricity.toLocaleString()}</p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
+                                        </td>
+                                    </tr>
+                                )
+                            })}
                             {filteredData.length === 0 && (
                                 <tr>
                                     <td colSpan={3} className="py-12 text-center text-gray-400">

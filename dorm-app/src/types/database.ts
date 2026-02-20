@@ -59,6 +59,8 @@ export interface Contract {
     durations: number;
     residents: number;
     signed_at: string; // Timestamp string
+    water_config_type?: 'unit' | 'fixed'; // 'unit' (default) or 'fixed'
+    water_fixed_price?: number; // Price if fixed type
 }
 
 export interface Invoice {

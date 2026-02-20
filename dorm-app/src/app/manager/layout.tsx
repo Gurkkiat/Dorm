@@ -96,6 +96,10 @@ function ManagerLayoutContent({
         { name: 'Manage Tenant', href: '/manager/tenants', icon: Users },
     ];
 
+    if (userRole === 'admin' || userRole === 'Admin') {
+        navItems.push({ name: 'Manage Users', href: '/manager/users', icon: User });
+    }
+
     const currentBranch = branches.find(b => b.id === selectedBranchId);
 
     return (
