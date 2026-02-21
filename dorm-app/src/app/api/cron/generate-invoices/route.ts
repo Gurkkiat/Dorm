@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 
 
         // 1. Fetch Active Contracts
-        const { data: contracts, error: contractError } = await supabase
+        const { data, error: contractError } = await supabase
             .from('contract')
             .select(`
                 id, 
@@ -45,6 +45,8 @@ export async function GET(request: Request) {
                 room:room_id ( rent_price, room_number )
             `)
             .in('status', ['active', 'Active', 'complete', 'Complete']);
+
+        const contracts = data as any[] || [];
 
         if (contractError) {
             console.error('Error fetching contracts:', contractError);
