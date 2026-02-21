@@ -165,14 +165,14 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
 
                 {/* Actions */}
                 <div className="text-center">
-                    {invoice.status === 'Paid' ? (
+                    {invoice.status?.toLowerCase() === 'paid' ? (
                         <div className="mb-6 p-4 bg-green-500/20 text-green-800 rounded-lg border border-green-500/30">
                             <h3 className="text-xl font-bold flex items-center justify-center gap-2">
                                 <Check size={24} /> Paid
                             </h3>
                             <p className="text-sm">This invoice has been verified.</p>
                         </div>
-                    ) : invoice.status === 'Unpaid' ? (
+                    ) : invoice.status?.toLowerCase() === 'unpaid' ? (
                         <div className="mb-6 p-4 bg-yellow-500/20 text-yellow-800 rounded-lg border border-yellow-500/30">
                             <h3 className="text-xl font-bold mb-2">Waiting for Payment</h3>
                             <p className="text-sm">The tenant has not uploaded a payment slip yet.</p>
@@ -226,7 +226,7 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
                                         >
                                             <div className="bg-green-500 rounded-lg p-3 flex items-center gap-2">
                                                 <Check size={28} className="text-white" strokeWidth={3} />
-                                                <span className="text-white font-bold pr-2">Approve Issue</span>
+                                                <span className="text-white font-bold pr-2">Approve</span>
                                             </div>
                                         </button>
 

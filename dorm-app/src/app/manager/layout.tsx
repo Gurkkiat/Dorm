@@ -110,7 +110,9 @@ function ManagerLayoutContent({
             {/* Sidebar */}
             <aside className="w-64 bg-[#0047AB] text-white flex flex-col fixed inset-y-0 left-0 z-50 shadow-xl">
                 <div className="p-6 flex flex-col items-center border-b border-blue-400/30">
-                    <Building2 size={64} className="mb-2" />
+                    <div className="w-32 h-32 mb-2 relative">
+                        <img src="/dorm_logo-white.png" alt="Logo" className="w-full h-full object-contain" />
+                    </div>
 
                     {/* Branch Selector */}
                     <div className="w-full mt-4">

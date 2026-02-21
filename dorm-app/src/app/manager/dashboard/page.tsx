@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Invoice, MaintenanceRequest, Contract } from '@/types/database';
-import { Wrench, DollarSign, Settings, Search, SlidersHorizontal, X, Building } from 'lucide-react';
+import { Wrench, DollarSign, Settings, Search, SlidersHorizontal, X, Building, Calendar, ArrowRight } from 'lucide-react';
 import { useManager } from '../ManagerContext';
+import { useRouter } from 'next/navigation';
 
 // Extended Types for Joins
 interface MaintenanceWithDetails extends MaintenanceRequest {
@@ -14,7 +15,15 @@ interface MaintenanceWithDetails extends MaintenanceRequest {
 interface InvoiceWithDetails extends Invoice {
     room_total_cost: number;
     contract?: {
-        room?: { room_number: string };
+        room?: {
+            room_number: string;
+            building?: {
+                id: number;
+                name_building: string;
+                branch_id: number;
+                branch?: { branches_name: string };
+            };
+        };
         user?: { full_name: string };
     };
 }
@@ -39,6 +48,8 @@ export default function DashboardPage() {
     const [overdueDays, setOverdueDays] = useState<number | ''>('');
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [sortBy, setSortBy] = useState('newest');
+    const [selectedPayment, setSelectedPayment] = useState<InvoiceWithDetails | null>(null);
+    const router = useRouter();
 
     // New Filters
     const [filterBuilding, setFilterBuilding] = useState('All');
@@ -69,7 +80,7 @@ export default function DashboardPage() {
                 // 3. Fetch Payments
                 let payQuery = supabase
                     .from('invoice')
-                    .select('*, contract:contract_id!inner(user:user_id(full_name), room:room_id!inner(room_number, building:building_id!inner(id, branch_id)))')
+                    .select('*, contract:contract_id!inner(user:user_id(full_name), room:room_id!inner(room_number, building:building_id!inner(id, name_building, branch_id, branch:branch_id(branches_name))))')
                     .order('bill_date', { ascending: false });
 
                 if (selectedBranchId !== 'All') {
@@ -310,10 +321,10 @@ export default function DashboardPage() {
     if (loading) return <div className="p-8 text-center">Loading Dashboard...</div>;
 
     return (
-        <div className="flex flex-col h-full font-roboto gap-6">
+        <div className="flex flex-col h-full font-roboto gap-6 relative">
 
             {/* Header with Filter Button */}
-            <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm">
+            <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm z-10">
                 <h1 className="text-2xl font-bold text-[#0047AB]">Dashboard Overview</h1>
 
                 <button
@@ -480,7 +491,7 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full overflow-hidden">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full overflow-hidden z-10">
 
                 {/* 1. Maintenance List */}
                 <div className="bg-[#0047AB] rounded-2xl p-4 text-white relative overflow-hidden flex flex-col shadow-lg">
@@ -543,7 +554,11 @@ export default function DashboardPage() {
                     <div className="flex-1 overflow-y-auto space-y-2 z-10 pr-2 custom-scrollbar">
                         {filteredPayment.length === 0 ? <p className="text-center text-sm opacity-70 mt-4">No payments found.</p> : null}
                         {filteredPayment.map((item) => (
-                            <div key={item.id} className="bg-white text-black rounded-full px-4 py-2 flex items-center justify-between text-sm shadow-sm hover:shadow-md transition-shadow">
+                            <div
+                                key={item.id}
+                                onClick={() => setSelectedPayment(item)}
+                                className="bg-white text-black rounded-full px-4 py-2 flex items-center justify-between text-sm shadow-sm hover:shadow-md transition-all cursor-pointer hover:-translate-y-0.5"
+                            >
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-bold w-20 text-center truncate border ${getPaymentBadge(item.status)}`}>
                                     {item.status.charAt(0).toUpperCase() + item.status.slice(1).toLowerCase()}
                                 </span>
@@ -610,6 +625,93 @@ export default function DashboardPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Payment Details Modal */}
+            {selectedPayment && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        {/* Modal Header */}
+                        <div className="bg-[#0047AB] p-6 text-white flex justify-between items-center relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 pointer-events-none"></div>
+                            <div>
+                                <h2 className="text-xl font-bold z-10 relative">Invoice Details</h2>
+                                <p className="text-blue-200 text-sm z-10 relative truncate max-w-[250px]">
+                                    {selectedPayment.contract?.user?.full_name}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setSelectedPayment(null)}
+                                className="bg-white/20 p-2 rounded-full hover:bg-white/30 transition-colors z-10"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-6 space-y-4">
+                            <div className="flex justify-between items-center pb-4 border-b border-gray-100">
+                                <div>
+                                    <p className="text-sm text-gray-500 font-medium">Room</p>
+                                    <p className="text-xl font-bold text-[#0047AB] flex items-center gap-2">
+                                        <Building size={20} />
+                                        {selectedPayment.contract?.room?.building?.branch?.branches_name} - {selectedPayment.contract?.room?.building?.name_building} - {selectedPayment.contract?.room?.room_number}
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-sm text-gray-500 font-medium">Status</p>
+                                    <span className={`inline-block mt-1 px-3 py-1 rounded-full text-xs font-bold border ${getPaymentBadge(selectedPayment.status)}`}>
+                                        {selectedPayment.status.toUpperCase()}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="py-2">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-gray-600 flex items-center gap-2">
+                                        <Calendar size={16} className="text-gray-400" /> Bill Date:
+                                    </span>
+                                    <span className="font-medium text-gray-800">
+                                        {new Date(selectedPayment.bill_date).toLocaleDateString('en-GB')}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-gray-600 flex items-center gap-2">
+                                        <Calendar size={16} className="text-gray-400" /> Due Date:
+                                    </span>
+                                    <span className={`font-bold ${selectedPayment.status !== 'Paid' && selectedPayment.due_date && new Date(selectedPayment.due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
+                                        {selectedPayment.due_date ? new Date(selectedPayment.due_date).toLocaleDateString('en-GB') : '-'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="bg-gray-50 p-4 rounded-xl flex justify-between items-center mt-4">
+                                <span className="text-gray-700 font-medium">Total Amount</span>
+                                <span className="text-2xl font-bold text-[#0047AB]">฿{selectedPayment.room_total_cost.toLocaleString()}</span>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-4 bg-gray-50 border-t border-gray-100 flex gap-3">
+                            <button
+                                onClick={() => setSelectedPayment(null)}
+                                className="flex-1 bg-white text-gray-700 px-4 py-2.5 rounded-xl font-bold border border-gray-200 hover:bg-gray-50 transition-colors"
+                            >
+                                Close
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setSelectedPayment(null);
+                                    router.push(`/manager/invoices/${selectedPayment.id}/verify`);
+                                }}
+                                className="flex-1 bg-[#0047AB] text-white px-4 py-2.5 rounded-xl font-bold shadow-md hover:bg-[#003380] transition-colors flex items-center justify-center gap-2"
+                            >
+                                <span>Take Action</span>
+                                <ArrowRight size={18} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

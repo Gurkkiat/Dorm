@@ -79,12 +79,12 @@ export default function LoginPage() {
 
                     <form onSubmit={handleLogin} className="space-y-6">
                         <div>
-                            <label className="block text-gray-500 text-sm mb-2 ml-1">user</label>
+                            <label className="block text-gray-500 text-sm mb-2 ml-1">username</label>
                             <input
                                 type="text"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
-                                placeholder="maxverstappen001"
+                                placeholder="username"
                                 className="w-full bg-gray-200 text-gray-700 rounded-lg py-3 px-4 focus:outline-none focus:ring-2 focus:ring-[#0047AB]"
                                 required
                             />
@@ -133,20 +133,14 @@ export default function LoginPage() {
                 {/* Right Side - Branding */}
                 <div className="w-full md:w-1/2 bg-[#E0E0E0] p-12 flex flex-col items-center justify-center relative">
                     <div className="relative">
-                        {/* 
-                 The design has a specific isometric building logo. 
-                 Using Lucide 'Building2' as a placeholder but styling it to look large and blue.
-                 Ideally this would be the exact vector from the image.
-                */}
-                        <div className="text-[#0055D4]"> {/* Slightly lighter blue for the icon base if needed, or stick to main blue */}
-                            <Building2 size={120} strokeWidth={1.5} color="#0047AB" fill="#0047AB" className="drop-shadow-xl" />
+                        <div className="w-46 h-46 relative flex items-center justify-center">
+                            <img src="/dorm_logo_blue.png" alt="Dormitory Logo" className="w-full h-full object-contain drop-shadow-2xl" />
                         </div>
                     </div>
 
-                    <div className="mt-8 text-center">
-                        <h3 className="text-[#0047AB] text-2xl font-bold tracking-wide">DORMITORY</h3>
-                        <h3 className="text-[#0047AB] text-xl font-medium tracking-wide">MANAGEMENT</h3>
-                        <h3 className="text-[#0047AB] text-xl font-medium tracking-wide">SYSTEM</h3>
+                    <div className="mt-2 text-center">
+                        <h3 className="text-[#0047AB] text-3xl font-bold tracking-wide leading-tight">Dormitory</h3>
+                        <h3 className="text-[#0047AB] text-xl font-medium tracking-wide leading-tight">Management System</h3>
                     </div>
                 </div>
 

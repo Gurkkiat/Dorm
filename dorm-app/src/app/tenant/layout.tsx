@@ -77,8 +77,8 @@ export default function TenantLayout({
             <aside className="w-64 bg-[#0047AB] text-white flex flex-col fixed h-full z-10 transition-transform duration-300">
                 {/* Logo Area */}
                 <div className="p-8 flex flex-col items-center">
-                    <div className="bg-white/10 p-3 rounded-xl mb-2">
-                        <Building2 size={48} className="text-white" />
+                    <div className="w-32 h-32 mb-2 relative flex items-center justify-center">
+                        <img src="/dorm_logo-white.png" alt="Logo" className="w-full h-full object-contain" />
                     </div>
                     {branchInfo ? (
                         <div className="text-center mt-2">
