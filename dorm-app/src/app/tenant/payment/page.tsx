@@ -122,11 +122,11 @@ export default function TenantPaymentPage() {
                     <div className="flex gap-2">
                         <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">
                             <AlertCircle size={12} className="mr-1.5" />
-                            {invoices.filter(i => i.status === 'unpaid').length} Unpaid
+                            {invoices.filter(i => i.status?.toLowerCase() === 'unpaid').length} Unpaid
                         </div>
                         <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">
                             <Clock size={12} className="mr-1.5" />
-                            {invoices.filter(i => i.status === 'pending').length} Pending
+                            {invoices.filter(i => i.status?.toLowerCase() === 'pending').length} Pending
                         </div>
                     </div>
                 </div>

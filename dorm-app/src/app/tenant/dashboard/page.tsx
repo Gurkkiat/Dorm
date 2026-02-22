@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
 import {
     Zap, Droplets, Wallet, Wrench, Bell, ArrowUpRight,
-    Calendar, User as UserIcon, AlertCircle, CheckCircle
+    Calendar, User as UserIcon, AlertCircle, CheckCircle, Edit2, Check
 } from 'lucide-react';
 import { MaintenanceRequest, Invoice } from '@/types/database';
 import Loading from '@/components/ui/loading';
@@ -22,6 +22,23 @@ export default function TenantDashboard() {
     });
     const [maintenanceList, setMaintenanceList] = useState<MaintenanceRequest[]>([]);
     const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([]);
+
+    // Usage Goals State
+    const [elecGoal, setElecGoal] = useState(300);
+    const [waterGoal, setWaterGoal] = useState(50);
+    const [isEditingGoal, setIsEditingGoal] = useState(false);
+    const [tempElecGoal, setTempElecGoal] = useState<number | ''>(300);
+    const [tempWaterGoal, setTempWaterGoal] = useState<number | ''>(50);
+
+    // Load goals from local storage on mount
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const savedElec = localStorage.getItem('tenant_elec_goal');
+            const savedWater = localStorage.getItem('tenant_water_goal');
+            if (savedElec && !isNaN(Number(savedElec))) setElecGoal(Number(savedElec));
+            if (savedWater && !isNaN(Number(savedWater))) setWaterGoal(Number(savedWater));
+        }
+    }, []);
 
     // Helper for Dynamic Title
     const getInvoiceTitle = (invoice: Invoice) => {
@@ -152,9 +169,11 @@ export default function TenantDashboard() {
                         <Bell size={20} />
                         <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
                     </button>
-                    <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-[#0047AB] to-[#0066FF] flex items-center justify-center text-white font-bold shadow-md shadow-blue-200">
-                        {userName.charAt(0)}
-                    </div>
+                    <Link href="/tenant/profile">
+                        <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-[#0047AB] to-[#0066FF] flex items-center justify-center text-white font-bold shadow-sm shadow-blue-200 hover:shadow-md hover:scale-105 transition-all cursor-pointer">
+                            {userName.charAt(0) || 'T'}
+                        </div>
+                    </Link>
                 </div>
             </div>
 
@@ -215,9 +234,60 @@ export default function TenantDashboard() {
                     {/* Usage Stats */}
                     <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-gray-800">Current Month Usage</h3>
-                            <span className="text-xs text-[#0047AB] font-mono bg-blue-50 px-2 py-1 rounded">Actual</span>
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-xl font-bold text-gray-800">Current Month Usage</h3>
+                                {!isEditingGoal && (
+                                    <button
+                                        onClick={() => { setIsEditingGoal(true); setTempElecGoal(elecGoal); setTempWaterGoal(waterGoal); }}
+                                        className="text-gray-400 hover:text-[#0047AB] p-1.5 rounded-full hover:bg-blue-50 transition-colors"
+                                        title="Set Usage Goals"
+                                    >
+                                        <Edit2 size={16} />
+                                    </button>
+                                )}
+                            </div>
+                            <span className="text-xs text-[#0047AB] font-mono bg-blue-50 px-2 py-1 rounded">Actual vs Goal</span>
                         </div>
+
+                        {isEditingGoal && (
+                            <div className="bg-blue-50 p-4 rounded-xl mb-6 border border-blue-100">
+                                <div className="text-sm font-bold text-[#0047AB] mb-3">Set Monthly Limit Goals</div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-xs text-gray-500 mb-1 block">Electricity (kWh)</label>
+                                        <input
+                                            type="number" min="1"
+                                            value={tempElecGoal}
+                                            onChange={e => setTempElecGoal(e.target.value === '' ? '' : Number(e.target.value))}
+                                            className="w-full text-sm font-bold text-gray-900 p-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[#0047AB] bg-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-gray-500 mb-1 block">Water (m³)</label>
+                                        <input
+                                            type="number" min="1"
+                                            value={tempWaterGoal}
+                                            onChange={e => setTempWaterGoal(e.target.value === '' ? '' : Number(e.target.value))}
+                                            className="w-full text-sm font-bold text-gray-900 p-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[#0047AB] bg-white"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex justify-end gap-2 mt-4">
+                                    <button onClick={() => setIsEditingGoal(false)} className="text-xs font-bold text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded-lg border border-gray-200 bg-white">Cancel</button>
+                                    <button onClick={() => {
+                                        const finalElec = Number(tempElecGoal) || 300;
+                                        const finalWater = Number(tempWaterGoal) || 50;
+                                        setElecGoal(finalElec);
+                                        setWaterGoal(finalWater);
+                                        localStorage.setItem('tenant_elec_goal', finalElec.toString());
+                                        localStorage.setItem('tenant_water_goal', finalWater.toString());
+                                        setIsEditingGoal(false);
+                                    }} className="text-xs font-bold text-white bg-[#0047AB] hover:bg-[#00388A] px-3 py-1.5 rounded-lg shadow flex items-center gap-1 transition-colors">
+                                        <Check size={14} /> Save Goals
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="space-y-6">
                             {/* Electricity */}
@@ -229,14 +299,16 @@ export default function TenantDashboard() {
                                         </div>
                                         Electricity
                                     </div>
-                                    <span className="font-bold text-gray-900">{stats.elecUsage} <span className="text-gray-400 font-normal">/ 300 kWh</span></span>
+                                    <span className="font-bold text-gray-900">
+                                        <span className={stats.elecUsage > elecGoal ? 'text-red-500' : ''}>{stats.elecUsage}</span> <span className="text-gray-400 font-normal">/ {elecGoal} kWh</span>
+                                    </span>
                                 </div>
                                 <div className="w-full bg-gray-100 h-4 rounded-full overflow-hidden relative">
                                     <div
-                                        className="bg-yellow-400 h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden"
-                                        style={{ width: `${Math.min((stats.elecUsage / 300) * 100, 100)}%` }}
+                                        className={`${stats.elecUsage > elecGoal ? 'bg-red-500' : 'bg-yellow-400'} h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden`}
+                                        style={{ width: `${Math.min((stats.elecUsage / elecGoal) * 100, 100)}%` }}
                                     >
-                                        <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" />
+                                        {stats.elecUsage <= elecGoal && <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" />}
                                     </div>
                                 </div>
                             </div>
@@ -250,13 +322,17 @@ export default function TenantDashboard() {
                                         </div>
                                         Water
                                     </div>
-                                    <span className="font-bold text-gray-900">{stats.waterUsage} <span className="text-gray-400 font-normal">/ 50 m³</span></span>
+                                    <span className="font-bold text-gray-900">
+                                        <span className={stats.waterUsage > waterGoal ? 'text-red-500' : ''}>{stats.waterUsage}</span> <span className="text-gray-400 font-normal">/ {waterGoal} m³</span>
+                                    </span>
                                 </div>
-                                <div className="w-full bg-gray-100 h-4 rounded-full overflow-hidden">
+                                <div className="w-full bg-gray-100 h-4 rounded-full overflow-hidden relative">
                                     <div
-                                        className="bg-cyan-400 h-full rounded-full transition-all duration-1000 ease-out"
-                                        style={{ width: `${Math.min((stats.waterUsage / 50) * 100, 100)}%` }}
-                                    />
+                                        className={`${stats.waterUsage > waterGoal ? 'bg-red-500' : 'bg-cyan-400'} h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden`}
+                                        style={{ width: `${Math.min((stats.waterUsage / waterGoal) * 100, 100)}%` }}
+                                    >
+                                        {stats.waterUsage <= waterGoal && <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" />}
+                                    </div>
                                 </div>
                             </div>
                         </div>

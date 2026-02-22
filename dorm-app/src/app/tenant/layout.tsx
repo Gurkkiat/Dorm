@@ -113,11 +113,11 @@ export default function TenantLayout({
 
                 {/* User Profile & Logout */}
                 <div className="p-4 bg-[#003380]">
-                    <div className="flex items-center gap-3 mb-4 px-2">
+                    <div className="flex items-center gap-3 mb-4 px-2 hover:bg-white/10 p-2 rounded-lg cursor-pointer transition-colors" onClick={() => router.push('/tenant/profile')}>
                         <div className="bg-white rounded-full p-2">
                             <User className="text-[#0047AB]" size={20} />
                         </div>
-                        <div className="overflow-hidden">
+                        <div className="overflow-hidden flex-1">
                             <p className="font-bold truncate text-sm">{userName}</p>
                             <p className="text-xs text-white/70">Tenant</p>
                         </div>
