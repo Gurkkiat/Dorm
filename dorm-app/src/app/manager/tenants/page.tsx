@@ -40,7 +40,7 @@ export default function ManageTenantsPage() {
     const [isAdmin, setIsAdmin] = useState(false);
 
     // Options
-    const [buildingOptions, setBuildingOptions] = useState<{ id: number, name: string }[]>([]);
+    const [buildingOptions, setBuildingOptions] = useState<{ id: number, name: string, elec_meter: number, water_meter: number, water_config_type: 'unit' | 'fixed', water_fixed_price: number | null }[]>([]);
 
     // ... existing filters ...
     const [roomFilter, setRoomFilter] = useState('All');
@@ -145,12 +145,21 @@ export default function ManageTenantsPage() {
         fetchData();
     }, []);
 
-    // Effect to update Building Options when Branch changes
+    // Building Settings Modal State
+    const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+    const [selectedBuildingForSettings, setSelectedBuildingForSettings] = useState<{ id: number, name: string, elec_meter: number, water_meter: number, water_config_type: 'unit' | 'fixed', water_fixed_price: number | null } | null>(null);
+    const [elecRateInput, setElecRateInput] = useState('');
+    const [waterConfigTypeInput, setWaterConfigTypeInput] = useState<'unit' | 'fixed'>('unit');
+    const [waterRateInput, setWaterRateInput] = useState('');
+    const [waterFixedPriceInput, setWaterFixedPriceInput] = useState('');
+    const [savingSettings, setSavingSettings] = useState(false);
+
+    // Fetch Buildings when Branch changes
     useEffect(() => {
         async function fetchBuildings() {
             let query = supabase
                 .from('building')
-                .select('id, name_building')
+                .select('id, name_building, elec_meter, water_meter, water_config_type, water_fixed_price')
                 .order('name_building');
 
             if (selectedBranchId !== 'All') {
@@ -160,13 +169,75 @@ export default function ManageTenantsPage() {
             const { data } = await query;
 
             if (data) {
-                setBuildingOptions(data.map(b => ({ id: b.id, name: b.name_building })));
+                setBuildingOptions(data.map(b => ({
+                    id: b.id,
+                    name: b.name_building,
+                    elec_meter: b.elec_meter,
+                    water_meter: b.water_meter,
+                    water_config_type: b.water_config_type as 'unit' | 'fixed' || 'unit',
+                    water_fixed_price: b.water_fixed_price
+                })));
             }
             setBuildingFilter('All');
         }
 
         fetchBuildings();
     }, [selectedBranchId]);
+
+    // Handle Open Settings Modal
+    const handleOpenSettings = () => {
+        if (buildingFilter === 'All') {
+            alert('Please select a specific building to configure its rates.');
+            return;
+        }
+
+        const b = buildingOptions.find(opt => opt.id === Number(buildingFilter));
+        if (b) {
+            setSelectedBuildingForSettings(b);
+            setElecRateInput(b.elec_meter?.toString() || '0');
+            setWaterConfigTypeInput(b.water_config_type || 'unit');
+            setWaterRateInput(b.water_meter?.toString() || '0');
+            setWaterFixedPriceInput(b.water_fixed_price?.toString() || '0');
+            setIsSettingsModalOpen(true);
+        }
+    };
+
+    // Handle Save Settings
+    const handleSaveSettings = async () => {
+        if (!selectedBuildingForSettings) return;
+
+        setSavingSettings(true);
+        try {
+            const updatePayload = {
+                elec_meter: parseFloat(elecRateInput) || 0,
+                water_config_type: waterConfigTypeInput,
+                water_meter: parseFloat(waterRateInput) || 0,
+                water_fixed_price: waterConfigTypeInput === 'fixed' ? (parseFloat(waterFixedPriceInput) || 0) : null
+            };
+
+            const { error } = await supabase
+                .from('building')
+                .update(updatePayload)
+                .eq('id', selectedBuildingForSettings.id);
+
+            if (error) throw error;
+
+            alert('Rates updated successfully!');
+            setIsSettingsModalOpen(false);
+
+            // Update local state to reflect UI change
+            setBuildingOptions(prev => prev.map(b =>
+                b.id === selectedBuildingForSettings.id
+                    ? { ...b, ...updatePayload, water_config_type: updatePayload.water_config_type as 'unit' | 'fixed' }
+                    : b
+            ));
+        } catch (error) {
+            console.error('Error saving building settings:', error);
+            alert('Failed to save settings.');
+        } finally {
+            setSavingSettings(false);
+        }
+    };
 
     // Filter Logic
     useEffect(() => {
@@ -258,9 +329,19 @@ export default function ManageTenantsPage() {
                     <div className="flex flex-wrap gap-4 items-end">
                         {/* Branch Filter Removed (Now in Sidebar) */}
 
-                        {/* Building Filter */}
+                        {/* Building Filter + Configure Rates Button */}
                         <div className="flex flex-col">
-                            <label className="text-xs mb-1 ml-1">Building:</label>
+                            <div className="flex justify-between items-center mb-1">
+                                <label className="text-xs ml-1">Building:</label>
+                                {buildingFilter !== 'All' && (
+                                    <button
+                                        onClick={handleOpenSettings}
+                                        className="text-[10px] text-blue-200 hover:text-white underline px-1"
+                                    >
+                                        Configure Rates
+                                    </button>
+                                )}
+                            </div>
                             <select
                                 className="bg-white text-black text-sm rounded px-3 py-1.5 focus:outline-none min-w-[100px]"
                                 value={buildingFilter}
@@ -424,6 +505,90 @@ export default function ManageTenantsPage() {
                 </div >
 
             </div >
+
+            {/* Building Rates Settings Modal */}
+            {isSettingsModalOpen && selectedBuildingForSettings && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-[#1A365D] text-white rounded-2xl p-6 w-full max-w-sm shadow-2xl border border-white/10">
+                        <h2 className="text-xl font-bold mb-4">Utility Rates Settings</h2>
+                        <p className="text-sm text-gray-300 mb-6">Configure rates for: <span className="font-bold text-white">{selectedBuildingForSettings.name}</span></p>
+
+                        <div className="space-y-4 mb-6">
+                            <div>
+                                <label className="block text-sm mb-1 font-medium">Electricity Rate (THB / Unit)</label>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    className="w-full bg-white/10 border border-white/20 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-400"
+                                    value={elecRateInput}
+                                    onChange={e => setElecRateInput(e.target.value)}
+                                />
+                            </div>
+                            <div className="border-t border-white/20 pt-4 mt-4">
+                                <label className="block text-sm mb-2 font-medium">Water Billing Method</label>
+                                <div className="flex bg-blue-400 rounded-lg p-1 w-full mb-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setWaterConfigTypeInput('unit')}
+                                        className={`flex-1 text-xs px-2 py-1.5 rounded-md transition-all ${waterConfigTypeInput === 'unit' ? 'bg-white text-[#0047AB] font-bold' : 'text-white/70 hover:text-white'}`}
+                                    >
+                                        Per Unit (Default)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setWaterConfigTypeInput('fixed')}
+                                        className={`flex-1 text-xs px-2 py-1.5 rounded-md transition-all ${waterConfigTypeInput === 'fixed' ? 'bg-white text-[#0047AB] font-bold' : 'text-white/70 hover:text-white'}`}
+                                    >
+                                        Fixed Monthly Price
+                                    </button>
+                                </div>
+
+                                {waterConfigTypeInput === 'unit' ? (
+                                    <div>
+                                        <label className="block text-sm mb-1 font-medium">Water Rate (THB / Unit)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            className="w-full bg-white/10 border border-white/20 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-400"
+                                            value={waterRateInput}
+                                            onChange={e => setWaterRateInput(e.target.value)}
+                                        />
+                                        <p className="text-xs text-blue-200 mt-1">Contracts can still override this.</p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label className="block text-sm mb-1 font-medium">Water Fixed Price (THB / Month)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            className="w-full bg-white/10 border border-white/20 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-400"
+                                            value={waterFixedPriceInput}
+                                            onChange={e => setWaterFixedPriceInput(e.target.value)}
+                                        />
+                                        <p className="text-xs text-blue-200 mt-1">This price applies regardless of usage.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setIsSettingsModalOpen(false)}
+                                className="px-4 py-2 rounded bg-white/10 hover:bg-white/20 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSaveSettings}
+                                disabled={savingSettings}
+                                className="px-4 py-2 rounded bg-blue-500 hover:bg-blue-600 transition-colors font-medium disabled:opacity-50"
+                            >
+                                {savingSettings ? 'Saving...' : 'Save Settings'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 }

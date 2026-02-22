@@ -57,7 +57,22 @@ export default function TenantMeterPage() {
                 .order('reading_date', { ascending: false });
 
             if (error) throw error;
-            setReadings(data || []);
+
+            // Deduplicate by Month-Year (keeping the latest)
+            const uniqueReadings = [];
+            const seenMonths = new Set();
+
+            for (const reading of (data || [])) {
+                const date = new Date(reading.reading_date);
+                const monthYear = date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+                if (!seenMonths.has(monthYear)) {
+                    seenMonths.add(monthYear);
+                    uniqueReadings.push(reading);
+                }
+            }
+
+            setReadings(uniqueReadings);
 
             // Set initial live reading
             if (data && data.length > 0) {

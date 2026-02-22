@@ -78,24 +78,35 @@ export default function TenantDashboard() {
                     .eq('contract_id', contractId)
                     .order('due_date', { ascending: false });
 
+                // 3.5 Fetch Actual Meter Reading
+                const { data: meterReading } = await supabase
+                    .from('meter_reading')
+                    .select('*')
+                    .eq('contract_id', contractId)
+                    .order('reading_date', { ascending: false })
+                    .limit(1)
+                    .single();
+
+                let actualElecUsage = 0;
+                let actualWaterUsage = 0;
+
+                if (meterReading) {
+                    actualElecUsage = Math.max(0, (meterReading.current_electricity || 0) - (meterReading.prev_electricity || 0));
+                    actualWaterUsage = Math.max(0, (meterReading.current_water || 0) - (meterReading.prev_water || 0));
+                }
+
                 if (invoices) {
                     const unpaid = invoices.filter(inv => inv.status.toLowerCase() === 'unpaid' || inv.status.toLowerCase() === 'pending');
                     const totalDue = unpaid.reduce((sum, inv) => sum + (inv.room_total_cost || 0), 0);
 
-                    const latestInvoice = invoices[0];
                     const lastPaid = invoices.find(inv => inv.status.toLowerCase() === 'paid');
-
-                    // Estimate usage from latest invoice costs (Mock logic as before)
-                    // Approx rates: Elec ~8, Water ~18
-                    const eCost = latestInvoice?.room_elec_cost || 0;
-                    const wCost = latestInvoice?.room_water_cost || 0;
 
                     setStats({
                         totalPayment: totalDue,
                         pendingInvoices: unpaid.length,
                         lastPaymentDate: lastPaid?.paid_date ? new Date(lastPaid.paid_date).toLocaleDateString('en-GB') : '-',
-                        elecUsage: Math.floor(eCost / 8),
-                        waterUsage: Math.floor(wCost / 18)
+                        elecUsage: Number(actualElecUsage.toFixed(2)),
+                        waterUsage: Number(actualWaterUsage.toFixed(2))
                     });
 
                     setRecentInvoices(invoices.slice(0, 3));
@@ -205,7 +216,7 @@ export default function TenantDashboard() {
                     <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-bold text-gray-800">Current Month Usage</h3>
-                            <span className="text-xs text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded">Estimated</span>
+                            <span className="text-xs text-[#0047AB] font-mono bg-blue-50 px-2 py-1 rounded">Actual</span>
                         </div>
 
                         <div className="space-y-6">

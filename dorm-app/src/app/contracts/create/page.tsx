@@ -10,7 +10,7 @@ export default function CreateContractPage() {
     const router = useRouter();
     // State for Branch/Building Selection
     const [branches, setBranches] = useState<{ id: number; branches_name: string; city: string }[]>([]);
-    const [buildings, setBuildings] = useState<{ id: number; name_building: string }[]>([]);
+    const [buildings, setBuildings] = useState<{ id: number; name_building: string; elec_meter: number; water_meter: number }[]>([]);
 
     // Selected IDs
     const [selectedBranchId, setSelectedBranchId] = useState<string>('');
@@ -44,6 +44,8 @@ export default function CreateContractPage() {
         username: '',
         password: '',
         is_primary_tenant: 'TRUE',
+        water_config_type: 'unit' as 'unit' | 'fixed',
+        water_fixed_price: '',
     });
 
 
@@ -107,7 +109,7 @@ export default function CreateContractPage() {
 
             const { data, error } = await supabase
                 .from('building')
-                .select('id, name_building')
+                .select('id, name_building, elec_meter, water_meter')
                 .eq('branch_id', parseInt(selectedBranchId))
                 .order('name_building');
 
@@ -389,6 +391,8 @@ export default function CreateContractPage() {
             username: '',
             password: '',
             is_primary_tenant: 'TRUE',
+            water_config_type: 'unit',
+            water_fixed_price: '',
         });
         setPetOption('none');
         setPetOtherText('');
@@ -498,6 +502,8 @@ export default function CreateContractPage() {
                     residents: parseInt(formData.residents),
                     status: 'incomplete',
                     signed_at: null,
+                    water_config_type: formData.water_config_type,
+                    water_fixed_price: formData.water_config_type === 'fixed' ? parseFloat(formData.water_fixed_price) || 0 : null,
                 }])
                 .select()
                 .single();
@@ -818,6 +824,50 @@ export default function CreateContractPage() {
                                         </option>
                                     ))}
                             </select>
+                        </div>
+                    </div>
+
+                    {/* Row 4.5: Utility Billing Configuration */}
+                    <div className="bg-white/10 p-4 rounded-xl border border-white/20 mb-4">
+                        <h3 className="text-white font-bold mb-3 flex items-center gap-2">
+                            <span>💧 Utility Billing Settings</span>
+                            {selectedBuildingId && (
+                                <span className="text-xs font-normal text-blue-200 bg-blue-900/50 px-2 py-0.5 rounded ml-2">
+                                    Base Electricity: {buildings.find(b => b.id === parseInt(selectedBuildingId))?.elec_meter || 0} THB/Unit
+                                    | Base Water: {buildings.find(b => b.id === parseInt(selectedBuildingId))?.water_meter || 0} THB/Unit
+                                </span>
+                            )}
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className={labelClass}>Water Calculation Method</label>
+                                <select
+                                    name="water_config_type"
+                                    value={formData.water_config_type}
+                                    onChange={handleChange}
+                                    className={selectClass}
+                                >
+                                    <option value="unit">Per Unit (ตามมิเตอร์จริง)</option>
+                                    <option value="fixed">Fixed Monthly Price (เหมาจ่าย)</option>
+                                </select>
+                            </div>
+
+                            {formData.water_config_type === 'fixed' && (
+                                <div>
+                                    <label className={labelClass}>Water Fixed Price (THB/Month)</label>
+                                    <input
+                                        type="number"
+                                        name="water_fixed_price"
+                                        value={formData.water_fixed_price}
+                                        onChange={handleChange}
+                                        className={inputClass}
+                                        placeholder="e.g. 100"
+                                        min="0"
+                                        step="0.01"
+                                        required={formData.water_config_type === 'fixed'}
+                                    />
+                                </div>
+                            )}
                         </div>
                     </div>
 

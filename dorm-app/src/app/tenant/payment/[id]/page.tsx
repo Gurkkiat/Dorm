@@ -16,6 +16,8 @@ interface InvoiceDetail extends Invoice {
                 name_building: string;
                 water_meter: number;
                 elec_meter: number;
+                water_config_type?: 'unit' | 'fixed';
+                water_fixed_price?: number | null;
                 branch?: {
                     branches_name: string;
                 }
@@ -40,7 +42,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             try {
                 const { data, error } = await supabase
                     .from('invoice')
-                    .select('*, contract:contract_id(*, user:user_id(*, is_primary_tenant), room:room_id(room_number, rent_price, building:building_id(name_building, water_meter, elec_meter, branch:branch_id(branches_name))))')
+                    .select('*, contract:contract_id(*, user:user_id(*, is_primary_tenant), room:room_id(room_number, rent_price, building:building_id(name_building, water_meter, elec_meter, water_config_type, water_fixed_price, branch:branch_id(branches_name))))')
                     .eq('id', invoiceId)
                     .single();
 
@@ -173,8 +175,28 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
     // Calculate Units based on Cost / Rate
     const building = invoice.contract?.room?.building;
-    const waterRate = building?.water_meter || 1; // Default to 1 to avoid NaN
-    const elecRate = building?.elec_meter || 1;
+
+    // Fetch rates from building
+    const elecRate = building?.elec_meter || 5; // Fallback to 5 if not set
+    let waterRate = building?.water_meter || 18; // Fallback to 18 if not set
+    let waterUnit = invoice.room_water_cost > 0 ? invoice.room_water_cost / waterRate : 0;
+
+    // Check if water is fixed price (either at contract level or building level)
+    let isFixedWater = false;
+    let fixedPriceValue = 0;
+
+    if ((invoice.contract as any)?.water_config_type === 'fixed') {
+        isFixedWater = true;
+        fixedPriceValue = (invoice.contract as any)?.water_fixed_price || invoice.room_water_cost;
+    } else if ((building as any)?.water_config_type === 'fixed') {
+        isFixedWater = true;
+        fixedPriceValue = (building as any)?.water_fixed_price || invoice.room_water_cost;
+    }
+
+    if (isFixedWater) {
+        waterRate = fixedPriceValue;
+        waterUnit = invoice.room_water_cost > 0 ? 1 : 0;
+    }
 
     const items = [
         {
@@ -198,7 +220,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         {
             label: 'ค่าน้ำ',
             amount: invoice.room_water_cost,
-            unit: invoice.room_water_cost > 0 ? invoice.room_water_cost / waterRate : 0,
+            unit: waterUnit,
             price: waterRate
         },
         {

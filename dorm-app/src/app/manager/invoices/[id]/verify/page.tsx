@@ -10,7 +10,7 @@ import { Building, Check, X } from 'lucide-react';
 interface InvoiceWithDetails extends Invoice {
     contract?: Contract & {
         user?: { full_name: string; phone: string };
-        room?: { room_number: string; rent_price: number };
+        room?: { room_number: string; rent_price: number; building?: { elec_meter: number; water_meter: number; water_config_type: 'unit' | 'fixed'; water_fixed_price: number | null } };
         room_id?: number;
     };
 }
@@ -31,7 +31,7 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
                 // Fetch Invoice with Contract -> User + Room
                 const { data, error } = await supabase
                     .from('invoice')
-                    .select('*, contract:contract_id(*, user:user_id(full_name, phone), room:room_id(room_number, rent_price))')
+                    .select('*, contract:contract_id(*, user:user_id(full_name, phone), room:room_id(room_number, rent_price, building:building_id(elec_meter, water_meter, water_config_type, water_fixed_price)))')
                     .eq('id', id)
                     .single();
 
@@ -101,12 +101,61 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
     if (loading) return <div className="text-center p-10 text-white">Loading Invoice...</div>;
     if (!invoice) return <div className="text-center p-10 text-white">Invoice not found.</div>;
 
+    const building = (invoice.contract?.room as any)?.building;
+
+    // Fetch rates from building
+    const elecRate = building?.elec_meter || 5; // Fallback to 5 if not set
+    let waterRate = building?.water_meter || 18; // Fallback to 18 if not set
+    let waterUnit = invoice.room_water_cost > 0 ? invoice.room_water_cost / waterRate : 0;
+
+    // Check if water is fixed price (either at contract level or building level)
+    let isFixedWater = false;
+    let fixedPriceValue = 0;
+
+    if ((invoice.contract as any)?.water_config_type === 'fixed') {
+        isFixedWater = true;
+        fixedPriceValue = (invoice.contract as any)?.water_fixed_price || invoice.room_water_cost;
+    } else if ((building as any)?.water_config_type === 'fixed') {
+        isFixedWater = true;
+        fixedPriceValue = (building as any)?.water_fixed_price || invoice.room_water_cost;
+    }
+
+    if (isFixedWater) {
+        waterRate = fixedPriceValue;
+        waterUnit = invoice.room_water_cost > 0 ? 1 : 0;
+    }
+
     const items = [
-        { label: 'ค่าประกันหอพัก', amount: invoice.room_deposit_cost },
-        { label: 'ค่าเช่าห้อง', amount: (invoice.contract?.status === 'complete' ? (invoice.contract?.room?.rent_price || 0) : 0) }, // Hide if not complete
-        { label: 'ค่าไฟ', amount: invoice.room_elec_cost },
-        { label: 'ค่าน้ำ', amount: invoice.room_water_cost },
-        { label: 'ค่าซ่อมแซม', amount: invoice.room_repair_cost },
+        {
+            label: 'ค่าประกันหอพัก',
+            amount: invoice.room_deposit_cost,
+            unit: 1,
+            price: invoice.room_deposit_cost
+        },
+        {
+            label: 'ค่าเช่าห้อง',
+            amount: (invoice.contract?.status === 'complete' ? (invoice.contract?.room?.rent_price || 0) : 0),
+            unit: 1,
+            price: (invoice.contract?.status === 'complete' ? (invoice.contract?.room?.rent_price || 0) : 0)
+        },
+        {
+            label: 'ค่าไฟ',
+            amount: invoice.room_elec_cost,
+            unit: invoice.room_elec_cost > 0 ? invoice.room_elec_cost / elecRate : 0,
+            price: elecRate
+        },
+        {
+            label: 'ค่าน้ำ',
+            amount: invoice.room_water_cost,
+            unit: waterUnit,
+            price: waterRate
+        },
+        {
+            label: 'ค่าซ่อมแซม',
+            amount: invoice.room_repair_cost,
+            unit: 1,
+            price: invoice.room_repair_cost
+        },
     ].filter(i => i.amount > 0);
 
     // Calculate total from items to verify or just use invoice.room_total_cost
@@ -150,8 +199,8 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
                     {items.map((item, idx) => (
                         <div key={idx} className="flex justify-between py-1 text-sm">
                             <span className="w-1/2">{item.label}</span>
-                            <span className="w-1/6 text-center">1</span>
-                            <span className="w-1/6 text-right">{item.amount.toLocaleString()}</span>
+                            <span className="w-1/6 text-center">{Number.isInteger(item.unit) ? item.unit : item.unit.toFixed(1)}</span>
+                            <span className="w-1/6 text-right">{item.price.toLocaleString()}</span>
                             <span className="w-1/6 text-right font-bold">{item.amount.toLocaleString()}</span>
                         </div>
                     ))}
