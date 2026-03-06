@@ -42,20 +42,39 @@ export async function GET(request: Request) {
                 user_id, 
                 water_config_type, 
                 water_fixed_price,
+                move_in,
                 room:room_id ( rent_price, room_number )
             `)
             .in('status', ['active', 'Active', 'complete', 'Complete']);
 
-        const contracts = data as any[] || [];
+        let allContracts = data as any[] || [];
+
+        // 1.5 Filter contracts to those whose billing day is today
+        const billDate = new Date(); // Use today as the bill date
+        const todayDay = billDate.getDate();
+        // Determine the last day of the current month (e.g., 28, 30, 31)
+        const lastDayOfCurrentMonth = new Date(billDate.getFullYear(), billDate.getMonth() + 1, 0).getDate();
+
+        const contracts = allContracts.filter(contract => {
+            if (!contract.move_in) return false;
+            const moveInDate = new Date(contract.move_in);
+            let billingDay = moveInDate.getDate();
+
+            // Handle edge case: if a tenant moved in on the 31st, but current month has 30 days
+            // their billing day this month will be the 30th.
+            if (billingDay > lastDayOfCurrentMonth) {
+                billingDay = lastDayOfCurrentMonth;
+            }
+
+            return todayDay === billingDay;
+        });
 
         if (contractError) {
             console.error('Error fetching contracts:', contractError);
             return NextResponse.json({ error: 'Error fetching contracts', details: contractError }, { status: 500 });
         }
 
-        console.log(`Found ${contracts.length} active contracts.`);
-        const currentMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
-        const billDate = new Date();
+        console.log(`Found ${contracts.length} active contracts to bill today.`);
         const dueDate = new Date();
         dueDate.setDate(dueDate.getDate() + 5); // Due in 5 days
 
