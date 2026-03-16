@@ -51,11 +51,20 @@ export default function TenantPaymentPage() {
         fetchInvoices();
     }, []);
 
+    const getComputedStatus = (invoice: Invoice) => {
+        let s = invoice.status?.toLowerCase() || '';
+        if (s !== 'paid' && invoice.due_date && new Date(invoice.due_date) < new Date()) {
+            s = 'overdue';
+        }
+        return s;
+    };
+
     const getStatusColor = (status: string) => {
         const s = status.toLowerCase();
         if (s === 'paid') return 'text-green-600 bg-green-100 border-green-200';
+        if (s === 'unpaid') return 'text-yellow-600 bg-yellow-100 border-yellow-200';
         if (s === 'pending') return 'text-orange-600 bg-orange-100 border-orange-200';
-        if (s === 'unpaid') return 'text-red-600 bg-red-100 border-red-200';
+        if (s === 'overdue') return 'text-red-600 bg-red-100 border-red-200';
         return 'text-gray-600 bg-gray-100 border-gray-200';
     };
 
@@ -64,6 +73,7 @@ export default function TenantPaymentPage() {
         if (s === 'paid') return <CheckCircle size={14} className="mr-1" />;
         if (s === 'pending') return <Clock size={14} className="mr-1" />;
         if (s === 'unpaid') return <AlertCircle size={14} className="mr-1" />;
+        if (s === 'overdue') return <AlertCircle size={14} className="mr-1" />;
         return <FileText size={14} className="mr-1" />;
     };
 
@@ -80,13 +90,17 @@ export default function TenantPaymentPage() {
     };
 
     const filteredInvoices = invoices.filter(inv => {
+        const status = getComputedStatus(inv);
         if (filter === 'all') return true;
-        if (filter === 'unpaid') return ['unpaid', 'pending'].includes(inv.status.toLowerCase());
-        return inv.status.toLowerCase() === 'paid';
+        if (filter === 'unpaid') return ['unpaid', 'pending', 'overdue'].includes(status);
+        return status === 'paid';
     });
 
     const totalUnpaid = invoices
-        .filter(inv => ['unpaid', 'pending'].includes(inv.status.toLowerCase()))
+        .filter(inv => {
+            const status = getComputedStatus(inv);
+            return ['unpaid', 'pending', 'overdue'].includes(status);
+        })
         .reduce((sum, inv) => sum + (inv.room_total_cost || 0), 0);
 
 
@@ -122,11 +136,14 @@ export default function TenantPaymentPage() {
                     <div className="flex gap-2">
                         <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">
                             <AlertCircle size={12} className="mr-1.5" />
-                            {invoices.filter(i => i.status?.toLowerCase() === 'unpaid').length} Unpaid
+                            {invoices.filter(i => {
+                                const s = getComputedStatus(i);
+                                return s === 'unpaid' || s === 'overdue';
+                            }).length} Unpaid
                         </div>
                         <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">
                             <Clock size={12} className="mr-1.5" />
-                            {invoices.filter(i => i.status?.toLowerCase() === 'pending').length} Pending
+                            {invoices.filter(i => getComputedStatus(i) === 'pending').length} Pending
                         </div>
                     </div>
                 </div>
@@ -156,14 +173,17 @@ export default function TenantPaymentPage() {
                         <p className="text-gray-500">No invoices found</p>
                     </div>
                 ) : (
-                    filteredInvoices.map((inv) => (
+                    filteredInvoices.map((inv) => {
+                        const compStatus = getComputedStatus(inv);
+                        return (
                         // เติม className="block" ที่ Link เพื่อให้มันแสดงผลเป็นกล่องสี่เหลี่ยมเต็มพื้นที่
                         <Link key={inv.id} href={`/tenant/payment/${inv.id}`} className="block">
                             <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer group relative overflow-hidden">
                                 <div className="flex justify-between items-start mb-3">
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${inv.status.toLowerCase() === 'paid' ? 'bg-green-50 text-green-600' :
-                                            inv.status.toLowerCase() === 'unpaid' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${compStatus === 'paid' ? 'bg-green-50 text-green-600' :
+                                            compStatus === 'overdue' ? 'bg-red-50 text-red-600' : 
+                                            compStatus === 'unpaid' ? 'bg-yellow-50 text-yellow-600' : 'bg-orange-50 text-orange-600'
                                             }`}>
                                             <FileText size={20} />
                                         </div>
@@ -172,9 +192,9 @@ export default function TenantPaymentPage() {
                                             <p className="text-xs text-gray-400 font-mono">INV-{inv.id.toString().padStart(6, '0')}</p>
                                         </div>
                                     </div>
-                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center border ${getStatusColor(inv.status)}`}>
-                                        {getStatusIcon(inv.status)}
-                                        {inv.status.charAt(0).toUpperCase() + inv.status.slice(1).toLowerCase()}
+                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center border ${getStatusColor(compStatus)}`}>
+                                        {getStatusIcon(compStatus)}
+                                        {compStatus}
                                     </span>
                                 </div>
 
@@ -192,7 +212,7 @@ export default function TenantPaymentPage() {
                                 </div>
                             </div>
                         </Link>
-                    ))
+                    )})
                 )}
             </div>
         </div>

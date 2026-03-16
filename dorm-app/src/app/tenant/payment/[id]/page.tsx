@@ -264,6 +264,26 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         return `Rent at ${monthYear}`;
     };
 
+    // Helper to compute actual status including Overdue
+    const getComputedStatus = () => {
+        let s = status;
+        if (s !== 'paid' && invoice.due_date && new Date(invoice.due_date) < new Date()) {
+            s = 'overdue';
+        }
+        return s;
+    };
+
+    const computedStatus = getComputedStatus();
+
+    // Helper for Badge Color
+    const getBadgeClass = (s: string) => {
+        if (s === 'paid') return 'bg-green-500 text-white';
+        if (s === 'unpaid') return 'bg-yellow-400 text-yellow-900 border-yellow-500';
+        if (s === 'pending') return 'bg-white text-black border-gray-200';
+        if (s === 'overdue') return 'bg-red-500 text-white border-red-600';
+        return 'bg-gray-200 text-gray-800';
+    };
+
     return (
         <div className="max-w-5xl mx-auto pb-12 px-4 font-sans lg:px-8">
             <div className="flex justify-between items-center mb-6">
@@ -305,9 +325,14 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                                     </div>
                                 </div>
                             </div>
-                            <div className="text-right">
+                            <div className="text-right flex flex-col items-end">
                                 <h1 className="text-2xl font-bold tracking-tight whitespace-nowrap">{getInvoiceTitle()}</h1>
-                                <p className="text-xs opacity-60 font-mono mt-1">INV-{invoice.id.toString().padStart(6, '0')}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <p className="text-xs opacity-60 font-mono">INV-{invoice.id.toString().padStart(6, '0')}</p>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase ${getBadgeClass(computedStatus)}`}>
+                                        {computedStatus}
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
@@ -365,7 +390,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                                         <Clock size={12} />
                                         <p className="text-[10px] uppercase font-bold">Due Date</p>
                                     </div>
-                                    <p className="font-medium text-sm text-yellow-200">
+                                    <p className={`font-medium text-sm ${computedStatus === 'overdue' ? 'text-red-400 font-bold' : 'text-yellow-200'}`}>
                                         {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('en-GB') : '-'}
                                     </p>
                                 </div>
@@ -420,7 +445,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                         )}
 
                         {/* CASE 1: PENDING (Waiting for Confirmation) */}
-                        {(status === 'pending') && (
+                        {(computedStatus === 'pending') && (
                             <div className="flex flex-col items-center text-center">
                                 <Clock size={80} className="text-[#FF9100] mb-4" />
                                 <h2 className="text-3xl font-bold mb-2">WAITING FOR<br />PAYMENT</h2>
@@ -428,8 +453,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                             </div>
                         )}
 
-                        {/* CASE 2: UNPAID - Selection */}
-                        {(status === 'unpaid' && paymentMethod === 'none') && (
+                        {/* CASE 2: UNPAID/OVERDUE - Selection */}
+                        {((computedStatus === 'unpaid' || computedStatus === 'overdue') && paymentMethod === 'none') && (
                             <div className="w-full flex flex-col items-center">
                                 <p className="mb-6 text-lg font-medium">Select your payment method</p>
                                 <div className="flex gap-6">
@@ -460,8 +485,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                             </div>
                         )}
 
-                        {/* CASE 2a: UNPAID - Credit Card */}
-                        {(status === 'unpaid' && paymentMethod === 'credit_card') && (
+                        {/* CASE 2a: UNPAID/OVERDUE - Credit Card */}
+                        {((computedStatus === 'unpaid' || computedStatus === 'overdue') && paymentMethod === 'credit_card') && (
                             <div className="w-full max-w-md">
                                 <div className="text-center mb-6">
                                     <span className="text-3xl font-bold">{invoice.room_total_cost.toLocaleString()}</span>
@@ -508,8 +533,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                             </div>
                         )}
 
-                        {/* CASE 2b: UNPAID - QR Code */}
-                        {(status === 'unpaid' && paymentMethod === 'qrcode') && (
+                        {/* CASE 2b: UNPAID/OVERDUE - QR Code */}
+                        {((computedStatus === 'unpaid' || computedStatus === 'overdue') && paymentMethod === 'qrcode') && (
                             <div className="w-full max-w-sm text-center">
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-xs opacity-80">Dormitory Management System</span>
@@ -540,7 +565,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                         )}
 
                         {/* CASE 3: PAID */}
-                        {(status === 'paid') && (
+                        {(computedStatus === 'paid') && (
                             <div className="flex flex-col items-center text-center">
                                 <div className="bg-[#4CAF50] rounded-full p-4 mb-4 shadow-lg">
                                     <CheckCircle size={64} className="text-white" />

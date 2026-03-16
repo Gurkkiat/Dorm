@@ -18,6 +18,7 @@ interface MaintenanceRequestWithDetails extends MaintenanceRequest {
         floor: number;
         building?: {
             name_building: string;
+            branch_id?: number;
             branch?: {
                 branches_name: string;
             }
@@ -29,6 +30,7 @@ export default function MechanicMaintenancePage() {
     const [loading, setLoading] = useState(true);
     const [requests, setRequests] = useState<MaintenanceRequestWithDetails[]>([]);
     const [myUserId, setMyUserId] = useState<number | null>(null);
+    const [myBranchId, setMyBranchId] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState<'available' | 'my-jobs' | 'history'>('available');
 
     // Modal State
@@ -43,13 +45,33 @@ export default function MechanicMaintenancePage() {
 
     useEffect(() => {
         const userId = localStorage.getItem('user_id');
-        if (userId) setMyUserId(parseInt(userId));
-        fetchRequests();
+        if (userId) {
+            setMyUserId(parseInt(userId));
+            fetchRequests(parseInt(userId));
+        } else {
+            setLoading(false);
+        }
     }, []);
 
-    const fetchRequests = async () => {
+    const fetchRequests = async (userId: number = myUserId as number) => {
+        if (!userId) return;
+        
         setLoading(true);
-        // Fetch with nested joins: room -> building -> branch, AND timeline
+
+        // 1. Fetch user's branch_id
+        let userBranchId: number | null = null;
+        const { data: userData } = await supabase
+            .from('users')
+            .select('branch_id')
+            .eq('id', userId)
+            .single();
+
+        if (userData && userData.branch_id) {
+            userBranchId = userData.branch_id;
+            setMyBranchId(userData.branch_id);
+        }
+
+        // 2. Fetch all requests with nested relations
         const { data, error } = await supabase
             .from('maintenance_request')
             .select(`
@@ -59,6 +81,7 @@ export default function MechanicMaintenancePage() {
                     floor,
                     building:building_id (
                         name_building,
+                        branch_id,
                         branch:branch_id (
                             branches_name
                         )
@@ -71,15 +94,17 @@ export default function MechanicMaintenancePage() {
         if (error) {
             console.error('Error fetching requests:', error);
         } else {
-            // Sort timeline for each request locally if needed, though usually easier to order in query if possible
-            // Supabase nested order is tricky, so sorting in JS:
-            const requests = (data as unknown as MaintenanceRequestWithDetails[]) || [];
-            requests.forEach(r => {
+            // Filter out requests that don't match the mechanic's branch (if mechanic has a branch assigned)
+            const filteredRequests = userBranchId 
+                ? (data as unknown as MaintenanceRequestWithDetails[]).filter(req => req.room?.building?.branch_id === userBranchId)
+                : (data as unknown as MaintenanceRequestWithDetails[]);
+
+            filteredRequests.forEach(r => {
                 if (r.timeline) {
                     r.timeline.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
                 }
             });
-            setRequests(requests);
+            setRequests(filteredRequests);
         }
         setLoading(false);
     };

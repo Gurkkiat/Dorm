@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Wrench, LogOut, Home, User } from 'lucide-react';
+import { Wrench, LogOut, Home, User, Building } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function MechanicLayout({
     children,
@@ -13,6 +14,7 @@ export default function MechanicLayout({
     const pathname = usePathname();
     const router = useRouter();
     const [userName, setUserName] = useState('Mechanic');
+    const [branchName, setBranchName] = useState('Unassigned Branch');
 
     useEffect(() => {
         const name = localStorage.getItem('user_name');
@@ -20,10 +22,29 @@ export default function MechanicLayout({
 
         // Simple role check
         const role = localStorage.getItem('user_role');
+        const userId = localStorage.getItem('user_id');
+
         if (role !== 'mechanic') {
             // router.push('/login'); // Uncomment to enforce protection
         }
+
+        if (userId) {
+            fetchUserBranch(parseInt(userId));
+        }
     }, []);
+
+    const fetchUserBranch = async (userId: number) => {
+        const { data } = await supabase
+            .from('users')
+            .select('branch:branch_id(branches_name)')
+            .eq('id', userId)
+            .single();
+
+        if (data && data.branch) {
+            // @ts-ignore - Supabase join signature can be tricky
+            setBranchName(data.branch.branches_name);
+        }
+    };
 
     const handleLogout = () => {
         localStorage.clear();
@@ -36,22 +57,23 @@ export default function MechanicLayout({
         <div className="min-h-screen bg-gray-50 flex">
             {/* Sidebar */}
             <aside className="w-64 bg-[#0047AB] text-white border-r border-white/10 fixed h-full z-10 hidden md:flex flex-col">
+                {/* Logo Area */}
                 <div className="p-8 flex flex-col items-center">
-                    <div className="bg-white/10 p-3 rounded-xl mb-2">
-                        <Wrench size={48} className="text-white" />
+                    <div className="w-32 h-32 mb-2 relative flex items-center justify-center">
+                        <img src="/dorm_logo-white.png" alt="Logo" className="w-full h-full object-contain" />
                     </div>
                     <div className="text-center mt-2">
                         <h1 className="text-lg font-bold uppercase tracking-wider">MECHANIC</h1>
-                        <p className="text-xs font-light text-blue-200">PORTAL</p>
+                        <div className="flex items-center justify-center gap-1 mt-1 text-blue-200 bg-black/10 px-2 py-0.5 rounded-full w-fit mx-auto">
+                            <Building size={10} />
+                            <span className="text-[10px] font-medium tracking-wide">{branchName}</span>
+                        </div>
                     </div>
                 </div>
 
                 <div className="border-b border-white/20 mx-6 mb-6" />
 
                 <nav className="flex-1 px-4 space-y-2">
-                    <div className="px-4 py-2 mb-2 text-xs font-bold text-blue-200 uppercase tracking-wider">
-                        Menu
-                    </div>
                     <Link
                         href="/mechanic/maintenance"
                         className={`flex items-center gap-4 px-4 py-3 rounded-lg transition-colors group ${isActive('/mechanic/maintenance')
@@ -90,7 +112,10 @@ export default function MechanicLayout({
                     <div className="p-1.5 bg-white/20 rounded-lg">
                         <Wrench className="w-5 h-5 text-white" />
                     </div>
-                    <span className="font-bold text-white">Mechanic</span>
+                    <div className="flex flex-col">
+                        <span className="font-bold text-white text-sm leading-tight">Mechanic</span>
+                        <span className="text-[10px] text-white/70">{branchName}</span>
+                    </div>
                 </div>
                 <button onClick={handleLogout} className="p-2 text-white/80 hover:text-white">
                     <LogOut className="w-5 h-5" />

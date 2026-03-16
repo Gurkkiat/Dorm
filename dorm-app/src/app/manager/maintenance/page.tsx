@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { MaintenanceRequest } from '@/types/database'; // Ensure this type exists or use Partial/any
+import { MaintenanceRequest, MaintenanceTimeline } from '@/types/database'; // Ensure this type exists or use Partial/any
 import { useManager } from '../ManagerContext';
 import { Search, Wrench, CheckCircle2, Clock, Hammer, AlertCircle } from 'lucide-react';
 import Loading from '@/components/ui/loading';
@@ -10,6 +10,7 @@ import Loading from '@/components/ui/loading';
 // Extend the type if necessary for joins
 interface MaintenanceWithDetails extends MaintenanceRequest {
     type_of_repair?: string;
+    timeline?: MaintenanceTimeline[];
     room?: {
         room_number: string;
         building?: {
@@ -28,6 +29,10 @@ export default function ManagerMaintenancePage() {
 
     // Stats
     const [stats, setStats] = useState({ active: 0, completed: 0 });
+
+    // Modal State
+    const [selectedRequest, setSelectedRequest] = useState<MaintenanceWithDetails | null>(null);
+    const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
     useEffect(() => {
         fetchMaintenanceRequests();
@@ -58,7 +63,7 @@ export default function ManagerMaintenancePage() {
         try {
             let query = supabase
                 .from('maintenance_request')
-                .select('*, room:room_id(room_number, building:building_id(branch_id))')
+                .select('*, timeline:maintenance_timeline(*), room:room_id(room_number, building:building_id(branch_id))')
                 .order('requested_at', { ascending: false });
 
             // Apply Branch Filter
@@ -67,7 +72,7 @@ export default function ManagerMaintenancePage() {
                 // Using !inner forces the join to exist, effectively filtering by branch
                 query = supabase
                     .from('maintenance_request')
-                    .select('*, room:room_id!inner(room_number, building:building_id!inner(branch_id))')
+                    .select('*, timeline:maintenance_timeline(*), room:room_id!inner(room_number, building:building_id!inner(branch_id))')
                     .eq('room.building.branch_id', selectedBranchId)
                     .order('requested_at', { ascending: false });
             }
@@ -76,6 +81,14 @@ export default function ManagerMaintenancePage() {
 
             if (error) throw error;
             const requests = (data as unknown as MaintenanceWithDetails[]) || [];
+
+            // Sort timeline
+            requests.forEach(r => {
+                if (r.timeline) {
+                    r.timeline.sort((a: MaintenanceTimeline, b: MaintenanceTimeline) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                }
+            });
+
             setData(requests);
             setFilteredData(requests);
 
@@ -91,28 +104,7 @@ export default function ManagerMaintenancePage() {
         }
     }
 
-    const handleUpdateStatus = async (id: number, newStatus: string) => {
-        try {
-            const updates: any = { status_technician: newStatus };
-            if (newStatus === 'Done' || newStatus === 'Completed') {
-                updates.completed_at = new Date().toISOString();
-            }
 
-            const { error } = await supabase
-                .from('maintenance_request')
-                .update(updates)
-                .eq('id', id);
-
-            if (error) throw error;
-
-            // Optimistic Update
-            setData(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
-
-        } catch (error) {
-            console.error('Error updating status:', error);
-            alert('Failed to update status');
-        }
-    };
 
     if (loading) return <div className="p-8 text-center text-gray-500">Loading Dashboard...</div>;
 
@@ -212,11 +204,11 @@ export default function ManagerMaintenancePage() {
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-gray-50 text-gray-500 text-xs uppercase font-semibold">
                             <tr>
-                                <th className="py-4 px-4 rounded-l-lg">Room / Type</th>
-                                <th className="py-4 px-4">Description</th>
-                                <th className="py-4 px-4">Requested</th>
-                                <th className="py-4 px-4">Status</th>
-                                <th className="py-4 px-4 rounded-r-lg">Action</th>
+                                <th className="py-4 px-4 rounded-l-lg w-[20%]">Room / Type</th>
+                                <th className="py-4 px-4 text-center w-[30%]">Description</th>
+                                <th className="py-4 px-4 text-center w-[15%]">Requested</th>
+                                <th className="py-4 px-4 text-center w-[15%]">Status</th>
+                                <th className="py-4 px-4 rounded-r-lg text-center w-[10%]">Action</th>
                             </tr>
                         </thead>
                         <tbody className="text-sm divide-y divide-gray-50">
@@ -233,27 +225,29 @@ export default function ManagerMaintenancePage() {
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="py-4 px-4">
-                                        <p className="text-gray-700 max-w-xs truncate" title={row.issue_description}>
+                                    <td className="py-4 px-4 text-center">
+                                        <p className="text-gray-700 max-w-xs truncate mx-auto" title={row.issue_description}>
                                             {row.issue_description}
                                         </p>
                                     </td>
-                                    <td className="py-4 px-4 text-gray-500">
+                                    <td className="py-4 px-4 text-center text-gray-500">
                                         {new Date(row.requested_at).toLocaleDateString()}
                                     </td>
                                     <td className="py-4 px-4">
-                                        {getStatusBadge(row.status_technician)}
+                                        <div className="flex justify-center">
+                                            {getStatusBadge(row.status_technician)}
+                                        </div>
                                     </td>
-                                    <td className="py-4 px-4">
-                                        <select
-                                            className="bg-white border border-gray-200 text-gray-700 text-xs rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer hover:bg-gray-50"
-                                            value={row.status_technician}
-                                            onChange={(e) => handleUpdateStatus(row.id, e.target.value)}
+                                    <td className="py-4 px-4 text-center">
+                                        <button
+                                            onClick={() => {
+                                                setSelectedRequest(row);
+                                                setIsDetailModalOpen(true);
+                                            }}
+                                            className="bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
                                         >
-                                            <option value="Pending">Pending</option>
-                                            <option value="Repairing">Repairing</option>
-                                            <option value="Done">Done</option>
-                                        </select>
+                                            View
+                                        </button>
                                     </td>
                                 </tr>
                             ))}
@@ -268,6 +262,95 @@ export default function ManagerMaintenancePage() {
                     </table>
                 </div>
             </div>
+
+            {/* Read-Only Modal */}
+            {isDetailModalOpen && selectedRequest && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[32px] w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+                        <div className="p-6 border-b border-gray-100 flex justify-between items-center sticky top-0 bg-white z-10">
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-900">Job Details</h2>
+                                <p className="text-gray-500 text-sm">Timeline and Progress</p>
+                            </div>
+                            <button
+                                onClick={() => setIsDetailModalOpen(false)}
+                                className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors"
+                            >
+                                <AlertCircle className="w-5 h-5 opacity-0 absolute pointer-events-none" /> {/* Hidden icon trick just for import matching width */}
+                                <span className="text-xl leading-none">&times;</span>
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-8">
+                            {/* Request Info */}
+                            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Issue Description</h3>
+                                <p className="text-gray-900 text-lg font-medium leading-relaxed">{selectedRequest.issue_description}</p>
+
+                                <div className="mt-4 flex flex-col gap-3">
+                                    <div className="flex items-start gap-3 bg-white p-3 rounded-xl border border-gray-200">
+                                        <div className="p-2 bg-blue-50 rounded-lg">
+                                            <Wrench className="w-5 h-5 text-[#0047AB]" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-gray-500 uppercase font-bold">Room</p>
+                                            <p className="text-sm font-medium text-gray-900">Room {selectedRequest.room?.room_number}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-gray-200 text-sm text-gray-600 w-fit">
+                                        <Clock className="w-4 h-4 text-[#0047AB]" />
+                                        {new Date(selectedRequest.requested_at).toLocaleString()}
+                                    </div>
+                                </div>
+
+                                {selectedRequest.path_photos && (
+                                    <div className="mt-4">
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Attached Photo</p>
+                                        <div className="relative aspect-video w-full rounded-xl overflow-hidden border border-gray-200">
+                                            <a href={selectedRequest.path_photos} target="_blank" rel="noreferrer">
+                                                <img src={selectedRequest.path_photos} alt="Issue" className="object-cover w-full h-full hover:scale-105 transition-transform cursor-pointer" />
+                                            </a>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Timeline History */}
+                            <div className="mb-6">
+                                <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                    <Clock size={16} /> Timeline History
+                                </h4>
+                                <div className="space-y-4">
+                                    {selectedRequest.timeline && selectedRequest.timeline.length > 0 ? (
+                                        selectedRequest.timeline.map((event: MaintenanceTimeline) => (
+                                            <div key={event.id} className="relative pl-6 border-l-2 border-gray-100 last:border-0 pb-4">
+                                                <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-blue-100 border-2 border-white"></div>
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <span className="text-xs font-bold text-[#0047AB] uppercase">{event.status}</span>
+                                                    <span className="text-[10px] text-gray-400">
+                                                        {new Date(event.created_at).toLocaleString('en-GB')}
+                                                    </span>
+                                                </div>
+                                                {event.comment && <p className="text-sm text-gray-600 mb-2">{event.comment}</p>}
+                                                {event.photo_url && (
+                                                    <div className="relative h-24 w-32 rounded-lg overflow-hidden border border-gray-100">
+                                                        <a href={event.photo_url} target="_blank" rel="noopener noreferrer">
+                                                            <img src={event.photo_url} alt="Proof" className="object-cover w-full h-full" />
+                                                        </a>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-gray-400 text-sm italic">No updates yet</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

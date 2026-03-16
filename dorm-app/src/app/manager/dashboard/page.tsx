@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
 
 // Extended Types for Joins
 interface MaintenanceWithDetails extends MaintenanceRequest {
-    room?: { room_number: string };
+    room?: { room_number: string; floor: number };
 }
 
 interface InvoiceWithDetails extends Invoice {
@@ -17,6 +17,7 @@ interface InvoiceWithDetails extends Invoice {
     contract?: {
         room?: {
             room_number: string;
+            floor: number;
             building?: {
                 id: number;
                 name_building: string;
@@ -29,7 +30,7 @@ interface InvoiceWithDetails extends Invoice {
 }
 
 interface ContractWithDetails extends Contract {
-    room?: { room_number: string };
+    room?: { room_number: string; floor: number };
     user?: { full_name: string; sex: string };
 }
 
@@ -58,7 +59,14 @@ export default function DashboardPage() {
     const [minAmount, setMinAmount] = useState<number | ''>('');
     const [maxAmount, setMaxAmount] = useState<number | ''>('');
     const [expiringDays, setExpiringDays] = useState<number | ''>('');
-    const [buildings, setBuildings] = useState<{ id: number, name_building: string }[]>([]);
+    const [filterFloor, setFilterFloor] = useState('All');
+    const [moveInStart, setMoveInStart] = useState('');
+    const [moveInEnd, setMoveInEnd] = useState('');
+    const [moveOutStart, setMoveOutStart] = useState('');
+    const [moveOutEnd, setMoveOutEnd] = useState('');
+    const [paidStart, setPaidStart] = useState('');
+    const [paidEnd, setPaidEnd] = useState('');
+    const [buildings, setBuildings] = useState<{ id: number, name_building: string, total_floor: number }[]>([]);
 
     useEffect(() => {
         async function fetchData() {
@@ -68,7 +76,7 @@ export default function DashboardPage() {
                 // 2. Fetch Maintenance
                 let maintQuery = supabase
                     .from('maintenance_request')
-                    .select('*, room:room_id!inner(room_number, building:building_id!inner(id, branch_id))')
+                    .select('*, room:room_id!inner(room_number, floor, building:building_id!inner(id, branch_id))')
                     .order('requested_at', { ascending: false });
 
                 if (selectedBranchId !== 'All') {
@@ -80,7 +88,7 @@ export default function DashboardPage() {
                 // 3. Fetch Payments
                 let payQuery = supabase
                     .from('invoice')
-                    .select('*, contract:contract_id!inner(user:user_id(full_name), room:room_id!inner(room_number, building:building_id!inner(id, name_building, branch_id, branch:branch_id(branches_name))))')
+                    .select('*, contract:contract_id!inner(user:user_id(full_name), room:room_id!inner(room_number, floor, building:building_id!inner(id, name_building, branch_id, branch:branch_id(branches_name))))')
                     .order('bill_date', { ascending: false });
 
                 if (selectedBranchId !== 'All') {
@@ -92,7 +100,7 @@ export default function DashboardPage() {
                 // 4. Fetch Tenants
                 let tenantQuery = supabase
                     .from('contract')
-                    .select('*, room:room_id!inner(room_number, building:building_id!inner(id, branch_id)), user:user_id(full_name, sex)')
+                    .select('*, room:room_id!inner(room_number, floor, building:building_id!inner(id, branch_id)), user:user_id(full_name, sex)')
                     .in('status', ['Active', 'active', 'complete']);
 
                 if (selectedBranchId !== 'All') {
@@ -108,7 +116,7 @@ export default function DashboardPage() {
                 // 5. Fetch Buildings for Filter Dropdown
                 let buildingQuery = supabase
                     .from('building')
-                    .select('id, name_building');
+                    .select('id, name_building, total_floor');
 
                 if (selectedBranchId !== 'All') {
                     buildingQuery = buildingQuery.eq('branch_id', selectedBranchId);
@@ -146,6 +154,15 @@ export default function DashboardPage() {
         return 'bg-gray-200 text-gray-800';
     };
 
+    // Helper to compute actual status including Overdue
+    const getInvoiceStatus = (invoice: InvoiceWithDetails) => {
+        let status = invoice.status?.toLowerCase() || '';
+        if (status !== 'paid' && invoice.due_date && new Date(invoice.due_date) < new Date()) {
+            status = 'overdue';
+        }
+        return status;
+    };
+
     // Helper for Tenant Sex Badge Color
     const getSexBadge = (sex: string) => {
         const s = sex?.toLowerCase() || '';
@@ -169,6 +186,11 @@ export default function DashboardPage() {
             // @ts-ignore
             const bId = item.room?.building?.id;
             if (bId && String(bId) !== String(filterBuilding)) return false;
+        }
+
+        // 2.5 Floor Filter
+        if (filterFloor !== 'All') {
+            if (String(item.room?.floor) !== String(filterFloor)) return false;
         }
 
         // 3. Date Range Filter
@@ -203,10 +225,10 @@ export default function DashboardPage() {
     });
 
     const filteredPayment = paymentList.filter(item => {
+        const computedStatus = getInvoiceStatus(item);
         // 1. Status Filter
         if (filterPayment !== 'All') {
-            const s = item.status?.toLowerCase() || '';
-            if (s !== filterPayment.toLowerCase()) return false;
+            if (computedStatus !== filterPayment.toLowerCase()) return false;
         }
 
         // Building Filter
@@ -214,6 +236,11 @@ export default function DashboardPage() {
             // @ts-ignore
             const bId = item.contract?.room?.building?.id;
             if (bId && String(bId) !== String(filterBuilding)) return false;
+        }
+
+        // Floor Filter
+        if (filterFloor !== 'All') {
+            if (String(item.contract?.room?.floor) !== String(filterFloor)) return false;
         }
 
         // 2. Date Range Filter (Bill Date)
@@ -225,6 +252,20 @@ export default function DashboardPage() {
         if (endDate) {
             const d = new Date(item.bill_date).getTime();
             const end = new Date(endDate); end.setHours(23, 59, 59, 999);
+            if (d > end.getTime()) return false;
+        }
+
+        // Paid Date Range
+        if (paidStart) {
+            if (!item.paid_date) return false;
+            const d = new Date(item.paid_date).getTime();
+            const start = new Date(paidStart).getTime();
+            if (d < start) return false;
+        }
+        if (paidEnd) {
+            if (!item.paid_date) return false;
+            const d = new Date(item.paid_date).getTime();
+            const end = new Date(paidEnd); end.setHours(23, 59, 59, 999);
             if (d > end.getTime()) return false;
         }
 
@@ -273,6 +314,39 @@ export default function DashboardPage() {
             if (bId && String(bId) !== String(filterBuilding)) return false;
         }
 
+        // Floor Filter
+        if (filterFloor !== 'All') {
+            if (String(item.room?.floor) !== String(filterFloor)) return false;
+        }
+
+        // Move In Date
+        if (moveInStart) {
+            if (!item.move_in) return false;
+            const d = new Date(item.move_in).getTime();
+            const start = new Date(moveInStart).getTime();
+            if (d < start) return false;
+        }
+        if (moveInEnd) {
+            if (!item.move_in) return false;
+            const d = new Date(item.move_in).getTime();
+            const end = new Date(moveInEnd); end.setHours(23, 59, 59, 999);
+            if (d > end.getTime()) return false;
+        }
+
+        // Move Out Date
+        if (moveOutStart) {
+            if (!item.move_out) return false;
+            const d = new Date(item.move_out).getTime();
+            const start = new Date(moveOutStart).getTime();
+            if (d < start) return false;
+        }
+        if (moveOutEnd) {
+            if (!item.move_out) return false;
+            const d = new Date(item.move_out).getTime();
+            const end = new Date(moveOutEnd); end.setHours(23, 59, 59, 999);
+            if (d > end.getTime()) return false;
+        }
+
         // 1. Gender Filter
         if (filterGender === 'All') { } // NOOP
         else {
@@ -318,6 +392,25 @@ export default function DashboardPage() {
         return sortBy === 'oldest' ? a.id - b.id : b.id - a.id;
     });
 
+    const handleResetFilters = () => {
+        setSearchTerm('');
+        setSortBy('newest');
+        setFilterBuilding('All');
+        setFilterFloor('All');
+        setStartDate('');
+        setEndDate('');
+        setMinAmount('');
+        setMaxAmount('');
+        setOverdueDays('');
+        setExpiringDays('');
+        setPaidStart('');
+        setPaidEnd('');
+        setMoveInStart('');
+        setMoveInEnd('');
+        setMoveOutStart('');
+        setMoveOutEnd('');
+    };
+
     if (loading) return <div className="p-8 text-center">Loading Dashboard...</div>;
 
     return (
@@ -353,7 +446,7 @@ export default function DashboardPage() {
                         </div>
 
                         {/* Modal Body */}
-                        <div className="p-6 space-y-6">
+                        <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
 
                             {/* Search Input */}
                             <div>
@@ -389,43 +482,101 @@ export default function DashboardPage() {
                                 </div>
                             </div>
 
-                            {/* Building Filter */}
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Building</label>
-                                <div className="relative">
-                                    <select
-                                        value={filterBuilding}
-                                        onChange={(e) => setFilterBuilding(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 text-black font-medium rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#0047AB] appearance-none"
-                                    >
-                                        <option value="All">All Buildings</option>
-                                        {buildings.map((b) => (
-                                            <option key={b.id} value={b.id}>{b.name_building}</option>
-                                        ))}
-                                    </select>
-                                    <Building className="absolute left-3 top-3.5 text-gray-400 w-5 h-5" />
+                            {/* Building and Floor Filter */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Building</label>
+                                    <div className="relative">
+                                        <select
+                                            value={filterBuilding}
+                                            onChange={(e) => setFilterBuilding(e.target.value)}
+                                            className="w-full pl-10 pr-4 py-3 bg-gray-50 text-black font-medium rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#0047AB] appearance-none"
+                                        >
+                                            <option value="All">All Buildings</option>
+                                            {buildings.map((b) => (
+                                                <option key={b.id} value={b.id}>{b.name_building}</option>
+                                            ))}
+                                        </select>
+                                        <Building className="absolute left-3 top-3.5 text-gray-400 w-5 h-5" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Floor</label>
+                                    <div className="relative">
+                                        <select
+                                            value={filterFloor}
+                                            onChange={(e) => setFilterFloor(e.target.value)}
+                                            className="w-full pl-4 pr-4 py-3 bg-gray-50 text-black font-medium rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#0047AB] appearance-none"
+                                        >
+                                            <option value="All">All Floors</option>
+                                            {Array.from({ 
+                                                length: filterBuilding === 'All' 
+                                                    ? Math.max(5, ...buildings.map(b => b.total_floor || 0)) // Max out of all buildings or default 5
+                                                    : buildings.find(b => String(b.id) === filterBuilding)?.total_floor || 5 
+                                            }, (_, i) => i + 1).map(f => (
+                                                <option key={f} value={f}>Floor {f}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Date Range */}
-                            <div className="grid grid-cols-2 gap-4">
+                            {/* Date Ranges */}
+                            <div className="space-y-4 pt-4 border-t border-gray-100">
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Start Date</label>
-                                    <input
-                                        type="date"
-                                        value={startDate}
-                                        onChange={(e) => setStartDate(e.target.value)}
-                                        className="w-full px-3 py-2 bg-gray-50 text-black rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#0047AB]"
-                                    />
+                                    <label className="text-[10px] font-bold text-[#0047AB] uppercase tracking-wider mb-2 block ml-1">Bill Date Range</label>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <input
+                                            type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+                                            className="w-full px-3 py-2 bg-gray-50 text-black rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#0047AB] text-sm"
+                                        />
+                                        <input
+                                            type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+                                            className="w-full px-3 py-2 bg-gray-50 text-black rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#0047AB] text-sm"
+                                        />
+                                    </div>
                                 </div>
+
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">End Date</label>
-                                    <input
-                                        type="date"
-                                        value={endDate}
-                                        onChange={(e) => setEndDate(e.target.value)}
-                                        className="w-full px-3 py-2 bg-gray-50 text-black rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#0047AB]"
-                                    />
+                                    <label className="text-[10px] font-bold text-[#0047AB] uppercase tracking-wider mb-2 block ml-1">Paid Date Range</label>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <input
+                                            type="date" value={paidStart} onChange={(e) => setPaidStart(e.target.value)}
+                                            className="w-full px-3 py-2 bg-gray-50 text-black rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#0047AB] text-sm"
+                                        />
+                                        <input
+                                            type="date" value={paidEnd} onChange={(e) => setPaidEnd(e.target.value)}
+                                            className="w-full px-3 py-2 bg-gray-50 text-black rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#0047AB] text-sm"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-[#0047AB] uppercase tracking-wider mb-2 block ml-1">Move In Date Range (Tenants)</label>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <input
+                                            type="date" value={moveInStart} onChange={(e) => setMoveInStart(e.target.value)}
+                                            className="w-full px-3 py-2 bg-gray-50 text-black rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#0047AB] text-sm"
+                                        />
+                                        <input
+                                            type="date" value={moveInEnd} onChange={(e) => setMoveInEnd(e.target.value)}
+                                            className="w-full px-3 py-2 bg-gray-50 text-black rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#0047AB] text-sm"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-[#0047AB] uppercase tracking-wider mb-2 block ml-1">Move Out Date Range (Tenants)</label>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <input
+                                            type="date" value={moveOutStart} onChange={(e) => setMoveOutStart(e.target.value)}
+                                            className="w-full px-3 py-2 bg-gray-50 text-black rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#0047AB] text-sm"
+                                        />
+                                        <input
+                                            type="date" value={moveOutEnd} onChange={(e) => setMoveOutEnd(e.target.value)}
+                                            className="w-full px-3 py-2 bg-gray-50 text-black rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#0047AB] text-sm"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
@@ -479,7 +630,13 @@ export default function DashboardPage() {
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="p-4 bg-gray-50 flex justify-end">
+                        <div className="p-4 bg-gray-50 flex justify-between items-center">
+                            <button
+                                onClick={handleResetFilters}
+                                className="text-gray-500 font-bold px-4 py-2 hover:bg-gray-200 rounded-xl transition-colors"
+                            >
+                                Reset Filters
+                            </button>
                             <button
                                 onClick={() => setIsFilterOpen(false)}
                                 className="bg-[#0047AB] text-white px-6 py-2.5 rounded-xl font-bold shadow-lg hover:bg-[#003380] transition-transform hover:scale-105"
@@ -553,19 +710,22 @@ export default function DashboardPage() {
 
                     <div className="flex-1 overflow-y-auto space-y-2 z-10 pr-2 custom-scrollbar">
                         {filteredPayment.length === 0 ? <p className="text-center text-sm opacity-70 mt-4">No payments found.</p> : null}
-                        {filteredPayment.map((item) => (
-                            <div
-                                key={item.id}
-                                onClick={() => setSelectedPayment(item)}
-                                className="bg-white text-black rounded-full px-4 py-2 flex items-center justify-between text-sm shadow-sm hover:shadow-md transition-all cursor-pointer hover:-translate-y-0.5"
-                            >
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold w-20 text-center truncate border ${getPaymentBadge(item.status)}`}>
-                                    {item.status.charAt(0).toUpperCase() + item.status.slice(1).toLowerCase()}
-                                </span>
-                                <span className="flex-1 mx-2 truncate font-medium text-center">{item.room_total_cost.toLocaleString()}</span>
-                                <span className="font-bold text-[#0047AB] whitespace-nowrap">{item.contract?.room?.room_number}</span>
-                            </div>
-                        ))}
+                        {filteredPayment.map((item) => {
+                            const computedStatus = getInvoiceStatus(item);
+                            return (
+                                <div
+                                    key={item.id}
+                                    onClick={() => setSelectedPayment(item)}
+                                    className="bg-white text-black rounded-full px-4 py-2 flex items-center justify-between text-sm shadow-sm hover:shadow-md transition-all cursor-pointer hover:-translate-y-0.5"
+                                >
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold w-20 text-center truncate border ${getPaymentBadge(computedStatus)}`}>
+                                        {computedStatus.charAt(0).toUpperCase() + computedStatus.slice(1).toLowerCase()}
+                                    </span>
+                                    <span className="flex-1 mx-2 truncate font-medium text-center">{item.room_total_cost.toLocaleString()}</span>
+                                    <span className="font-bold text-[#0047AB] whitespace-nowrap">{item.contract?.room?.room_number}</span>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -659,8 +819,8 @@ export default function DashboardPage() {
                                 </div>
                                 <div className="text-right">
                                     <p className="text-sm text-gray-500 font-medium">Status</p>
-                                    <span className={`inline-block mt-1 px-3 py-1 rounded-full text-xs font-bold border ${getPaymentBadge(selectedPayment.status)}`}>
-                                        {selectedPayment.status.toUpperCase()}
+                                    <span className={`inline-block mt-1 px-3 py-1 rounded-full text-xs font-bold border ${getPaymentBadge(getInvoiceStatus(selectedPayment))}`}>
+                                        {getInvoiceStatus(selectedPayment).toUpperCase()}
                                     </span>
                                 </div>
                             </div>
@@ -678,10 +838,20 @@ export default function DashboardPage() {
                                     <span className="text-gray-600 flex items-center gap-2">
                                         <Calendar size={16} className="text-gray-400" /> Due Date:
                                     </span>
-                                    <span className={`font-bold ${selectedPayment.status !== 'Paid' && selectedPayment.due_date && new Date(selectedPayment.due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
+                                    <span className={`font-bold ${getInvoiceStatus(selectedPayment) === 'overdue' ? 'text-red-500' : 'text-gray-800'}`}>
                                         {selectedPayment.due_date ? new Date(selectedPayment.due_date).toLocaleDateString('en-GB') : '-'}
                                     </span>
                                 </div>
+                                {selectedPayment.status?.toLowerCase() === 'paid' && selectedPayment.paid_date && (
+                                    <div className="flex justify-between items-center mt-2">
+                                        <span className="text-gray-600 flex items-center gap-2">
+                                            <Calendar size={16} className="text-gray-400" /> Paid Date:
+                                        </span>
+                                        <span className="font-bold text-green-600">
+                                            {new Date(selectedPayment.paid_date).toLocaleDateString('en-GB')}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="bg-gray-50 p-4 rounded-xl flex justify-between items-center mt-4">
@@ -705,7 +875,7 @@ export default function DashboardPage() {
                                 }}
                                 className="flex-1 bg-[#0047AB] text-white px-4 py-2.5 rounded-xl font-bold shadow-md hover:bg-[#003380] transition-colors flex items-center justify-center gap-2"
                             >
-                                <span>Take Action</span>
+                                <span>Go to Bill</span>
                                 <ArrowRight size={18} />
                             </button>
                         </div>

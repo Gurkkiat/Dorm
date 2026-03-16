@@ -91,9 +91,8 @@ export default function LoginPage() {
                         </div>
 
                         <div>
-                            <div className="flex justify-between mb-2 ml-1">
+                            <div className="mb-2 ml-1">
                                 <label className="block text-gray-500 text-sm">password</label>
-                                <a href="#" className="text-[#0047AB] text-sm font-bold hover:underline">forgot password ?</a>
                             </div>
                             <input
                                 type="password"
@@ -105,16 +104,7 @@ export default function LoginPage() {
                             />
                         </div>
 
-                        <div className="flex items-center ml-1">
-                            <input
-                                id="remember_me"
-                                type="checkbox"
-                                className="h-4 w-4 text-[#0047AB] focus:ring-[#0047AB] border-gray-300 rounded"
-                            />
-                            <label htmlFor="remember_me" className="ml-2 block text-sm text-[#0047AB]">
-                                remember me
-                            </label>
-                        </div>
+
 
                         {error && (
                             <p className="text-red-500 text-sm text-center">{error}</p>

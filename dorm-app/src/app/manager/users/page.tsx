@@ -88,7 +88,7 @@ export default function UserManagementPage() {
                 password: formData.password, // Storing plain text as per existing system (Not secure for production)
                 full_name: formData.full_name,
                 role: formData.role,
-                branch_id: formData.role === 'Manager' && formData.branch_id ? Number(formData.branch_id) : null
+                branch_id: (formData.role === 'Manager' || formData.role === 'Mechanic') && formData.branch_id ? Number(formData.branch_id) : null
             };
 
             const { error } = await supabase
@@ -281,7 +281,7 @@ export default function UserManagementPage() {
                                     required
                                     value={formData.username}
                                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                                    className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#0047AB]"
+                                    className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#0047AB]"
                                     placeholder="e.g. manager_bk1"
                                 />
                             </div>
@@ -293,7 +293,7 @@ export default function UserManagementPage() {
                                     required
                                     value={formData.full_name}
                                     onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                                    className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#0047AB]"
+                                    className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#0047AB]"
                                     placeholder="e.g. Somchai Jai-dee"
                                 />
                             </div>
@@ -305,7 +305,7 @@ export default function UserManagementPage() {
                                     required
                                     value={formData.password}
                                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                    className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#0047AB]"
+                                    className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#0047AB]"
                                     placeholder="Enter password"
                                 />
                             </div>
@@ -316,20 +316,20 @@ export default function UserManagementPage() {
                                     <select
                                         value={formData.role}
                                         onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                                        className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#0047AB]"
+                                        className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0047AB]"
                                     >
                                         <option value="Manager">Manager</option>
                                         <option value="Mechanic">Mechanic</option>
                                     </select>
                                 </div>
 
-                                {formData.role === 'Manager' && (
+                                {(formData.role === 'Manager' || formData.role === 'Mechanic') && (
                                     <div>
                                         <label className="block text-sm font-bold text-gray-700 mb-1">Assign Branch</label>
                                         <select
                                             value={formData.branch_id}
                                             onChange={(e) => setFormData({ ...formData, branch_id: e.target.value })}
-                                            className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#0047AB]"
+                                            className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0047AB]"
                                         >
                                             <option value="">-- None --</option>
                                             {branches.map(b => (

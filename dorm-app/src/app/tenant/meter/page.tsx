@@ -155,93 +155,124 @@ export default function TenantMeterPage() {
                                 </div>
 
                                 {/* Usage Stats */}
-                                <div className="flex flex-col sm:flex-row gap-6 w-full md:w-auto">
+                                <div className="flex flex-col sm:flex-row gap-6 w-full md:w-3/4">
 
                                     {/* Electricity */}
-                                    <div className="flex items-center gap-3 flex-1 bg-yellow-50 p-3 rounded-xl relative overflow-hidden">
-                                        {/* Live Indicator Background Animation */}
-                                        <div className="absolute top-0 right-0 p-1">
-                                            <span className="relative flex h-2 w-2">
-                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                                            </span>
-                                        </div>
-
-                                        <div className="p-2 bg-yellow-100 rounded-lg text-yellow-600">
-                                            <Zap size={20} />
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-1.5">
-                                                <p className="text-xs text-yellow-700 font-bold uppercase">Electricity</p>
-                                                <span className="bg-green-100 text-green-700 text-[9px] px-1.5 py-0.5 rounded font-bold animate-pulse">LIVE</span>
+                                    <div className="flex-[4] bg-yellow-50 p-4 rounded-2xl relative overflow-hidden flex flex-col justify-between">
+                                        {/* Header Row */}
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div className="flex items-center gap-2">
+                                                <div className="p-2 bg-yellow-100 rounded-lg text-yellow-600">
+                                                    <Zap size={18} />
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-sm text-yellow-800 font-bold uppercase tracking-wider">Electricity</p>
+                                                    {index === 0 && (
+                                                        <span className="bg-green-100 text-green-700 text-[9px] px-1.5 py-0.5 rounded font-bold animate-pulse">LIVE</span>
+                                                    )}
+                                                </div>
                                             </div>
+                                            {/* Live Indicator Background Animation */}
+                                            {index === 0 && (
+                                                <span className="relative flex h-2.5 w-2.5 mr-1">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                                                </span>
+                                            )}
+                                        </div>
 
-                                            <div className="flex flex-col">
-                                                {/* Live Value */}
+                                        {/* Main Values */}
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div>
+                                                <p className="text-xs text-yellow-700 mb-1">Current Reading</p>
                                                 <div className="flex items-baseline gap-1">
-                                                    <span className="text-lg font-bold text-gray-900 font-mono tracking-tight">
-                                                        {index === 0 ? liveElectricity.toFixed(3) : reading.current_electricity.toFixed(3)}
+                                                    <span className="text-2xl font-bold text-gray-900 font-mono tracking-tight">
+                                                        {index === 0 ? liveElectricity.toFixed(2) : reading.current_electricity.toFixed(2)}
                                                     </span>
                                                     <span className="text-xs text-gray-500 font-medium">kWh</span>
                                                 </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs text-yellow-700 mb-1">Previous</p>
+                                                <span className="text-sm font-medium text-gray-600 font-mono">{reading.prev_electricity.toFixed(2)}</span>
+                                            </div>
+                                        </div>
 
-                                                {/* Cost Calculation */}
-                                                {index === 0 && (
-                                                    <div className="mt-1 bg-white/50 px-2 py-1 rounded border border-yellow-200/50">
-                                                        <p className="text-[10px] text-yellow-800 font-medium">Est. Cost</p>
-                                                        <p className="text-sm font-bold text-yellow-900 leading-tight">
-                                                            {((liveElectricity - reading.prev_electricity) * 5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿
+                                        {/* Cost & Usage Calculation (Footer) */}
+                                        <div className="bg-white/60 p-3 rounded-xl border border-yellow-200/50 flex items-center justify-between">
+                                            <div>
+                                                <p className="text-[10px] text-yellow-800 font-bold uppercase mb-0.5">Usage</p>
+                                                <p className="text-sm font-bold text-yellow-900">
+                                                    {((index === 0 ? liveElectricity : reading.current_electricity) - reading.prev_electricity).toFixed(2)} <span className="text-[10px] font-normal">units</span>
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                {index === 0 ? (
+                                                    <>
+                                                        <p className="text-[10px] text-yellow-800 font-bold uppercase mb-0.5">Est. Cost (Live)</p>
+                                                        <p className="text-lg font-bold text-yellow-900">
+                                                            {((liveElectricity - reading.prev_electricity) * 5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-[10px] font-normal">THB</span>
                                                         </p>
-                                                    </div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <p className="text-[10px] text-yellow-800 font-bold uppercase mb-0.5">Cost</p>
+                                                        <p className="text-lg font-bold text-gray-800">
+                                                            {((reading.current_electricity - reading.prev_electricity) * 5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-[10px] font-normal">THB</span>
+                                                        </p>
+                                                    </>
                                                 )}
-
-                                                {/* Previous Value Context */}
-                                                <div className="flex items-center text-[10px] text-gray-400 mt-0.5">
-                                                    <span>Prev: {reading.prev_electricity.toFixed(3)}</span>
-                                                    {index === 0 && (
-                                                        <span className="ml-2 text-yellow-600 font-bold">
-                                                            (+{(liveElectricity - reading.prev_electricity).toFixed(3)})
-                                                        </span>
-                                                    )}
-                                                </div>
                                             </div>
                                         </div>
                                     </div>
 
                                     {/* Water */}
-                                    <div className="flex items-center gap-3 flex-1 bg-cyan-50 p-3 rounded-xl">
-                                        <div className="p-2 bg-cyan-100 rounded-lg text-cyan-600">
-                                            <Droplets size={20} />
+                                    <div className="flex-[3] bg-cyan-50 p-4 rounded-2xl relative overflow-hidden flex flex-col justify-between">
+                                        {/* Header Row */}
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div className="flex items-center gap-2">
+                                                <div className="p-2 bg-cyan-100 rounded-lg text-cyan-600">
+                                                    <Droplets size={18} />
+                                                </div>
+                                                <p className="text-sm text-cyan-800 font-bold uppercase tracking-wider">Water</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="text-xs text-cyan-700 font-bold uppercase">Water</p>
 
-                                            <div className="flex flex-col">
+                                        {/* Main Values */}
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div>
+                                                <p className="text-xs text-cyan-700 mb-1">Current Reading</p>
                                                 <div className="flex items-baseline gap-1">
-                                                    <span className="text-lg font-bold text-gray-900 font-mono tracking-tight">
-                                                        {reading.current_water.toFixed(4)}
+                                                    <span className="text-2xl font-bold text-gray-900 font-mono tracking-tight">
+                                                        {reading.current_water.toFixed(2)}
                                                     </span>
-                                                    <span className="text-xs text-gray-500 font-medium">Units</span>
+                                                    <span className="text-xs text-gray-500 font-medium">m³</span>
                                                 </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs text-cyan-700 mb-1">Previous</p>
+                                                <span className="text-sm font-medium text-gray-600 font-mono">{reading.prev_water.toFixed(2)}</span>
+                                            </div>
+                                        </div>
 
-                                                {/* Cost Calculation */}
-                                                <div className="mt-1 bg-white/50 px-2 py-1 rounded border border-cyan-200/50">
-                                                    <p className="text-[10px] text-cyan-800 font-medium">
-                                                        {contractConfig?.water_config_type === 'fixed' ? 'Fixed Rate' : 'Est. Cost'}
-                                                    </p>
-                                                    <p className="text-sm font-bold text-cyan-900 leading-tight">
-                                                        {contractConfig?.water_config_type === 'fixed'
-                                                            ? `${contractConfig.water_fixed_price || 100} ฿`
-                                                            : `${((reading.current_water - reading.prev_water) * 18).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`
-                                                        }
-                                                    </p>
-                                                </div>
-
-                                                <div className="flex items-center text-sm font-medium text-gray-600 mt-1">
-                                                    <span>{reading.prev_water.toFixed(3)}</span>
-                                                    <ChevronRight size={14} className="mx-1" />
-                                                    <span className="text-gray-900 font-bold">{reading.current_water.toFixed(3)}</span>
-                                                </div>
+                                        {/* Cost & Usage Calculation (Footer) */}
+                                        <div className="bg-white/60 p-3 rounded-xl border border-cyan-200/50 flex items-center justify-between">
+                                            <div>
+                                                <p className="text-[10px] text-cyan-800 font-bold uppercase mb-0.5">Usage</p>
+                                                <p className="text-sm font-bold text-cyan-900">
+                                                    {(reading.current_water - reading.prev_water).toFixed(2)} <span className="text-[10px] font-normal">units</span>
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-[10px] text-cyan-800 font-bold uppercase mb-0.5">
+                                                    {contractConfig?.water_config_type === 'fixed' ? 'Fixed Rate' : 'Est. Cost'}
+                                                </p>
+                                                <p className="text-lg font-bold text-gray-800">
+                                                    {contractConfig?.water_config_type === 'fixed'
+                                                        ? `${(contractConfig.water_fixed_price || 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                        : `${((reading.current_water - reading.prev_water) * 18).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                    } <span className="text-[10px] font-normal">THB</span>
+                                                </p>
                                             </div>
                                         </div>
                                     </div>

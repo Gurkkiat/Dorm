@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Room } from '@/types/database';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft } from 'lucide-react';
 
 export default function CreateContractPage() {
     const router = useRouter();
@@ -592,6 +592,18 @@ export default function CreateContractPage() {
                     <div className="text-[200px] font-bold text-white/20">📋</div>
                 </div>
 
+                {/* Back Button */}
+                <button
+                    type="button"
+                    onClick={() => router.push('/manager/tenants')}
+                    className="absolute top-6 left-6 flex items-center gap-2 text-white/80 hover:text-white transition-colors group z-20"
+                >
+                    <div className="bg-white/10 group-hover:bg-white/20 p-2 rounded-full transition-colors">
+                        <ArrowLeft size={20} />
+                    </div>
+                    <span className="font-bold hidden sm:inline">Back</span>
+                </button>
+
                 {/* Header */}
                 <div className="text-center mb-6">
                     <h1 className="text-4xl font-bold">Contract</h1>
@@ -830,7 +842,7 @@ export default function CreateContractPage() {
                     {/* Row 4.5: Utility Billing Configuration */}
                     <div className="bg-white/10 p-4 rounded-xl border border-white/20 mb-4">
                         <h3 className="text-white font-bold mb-3 flex items-center gap-2">
-                            <span>💧 Utility Billing Settings</span>
+                            <span>Utility Billing Settings</span>
                             {selectedBuildingId && (
                                 <span className="text-xs font-normal text-blue-200 bg-blue-900/50 px-2 py-0.5 rounded ml-2">
                                     Base Electricity: {buildings.find(b => b.id === parseInt(selectedBuildingId))?.elec_meter || 0} THB/Unit

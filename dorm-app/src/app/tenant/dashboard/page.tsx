@@ -40,6 +40,14 @@ export default function TenantDashboard() {
         }
     }, []);
 
+    const getComputedStatus = (invoice: Invoice) => {
+        let s = invoice.status?.toLowerCase() || '';
+        if (s !== 'paid' && invoice.due_date && new Date(invoice.due_date) < new Date()) {
+            s = 'overdue';
+        }
+        return s;
+    };
+
     // Helper for Dynamic Title
     const getInvoiceTitle = (invoice: Invoice) => {
         if (!invoice.bill_date) return `Invoice #${invoice.id}`;
@@ -368,10 +376,14 @@ export default function TenantDashboard() {
 
                         <div className="space-y-4">
                             {recentInvoices.length > 0 ? (
-                                recentInvoices.map((inv) => (
+                                recentInvoices.map((inv) => {
+                                    const compStatus = getComputedStatus(inv);
+                                    return (
                                     <div key={inv.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-colors cursor-pointer group">
                                         <div className="flex items-center gap-3">
-                                            <div className={`p-2.5 rounded-xl ${inv.status.toLowerCase() === 'paid' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                                            <div className={`p-2.5 rounded-xl ${compStatus === 'paid' ? 'bg-green-50 text-green-600' : 
+                                                compStatus === 'overdue' ? 'bg-red-50 text-red-600' :
+                                                compStatus === 'unpaid' ? 'bg-yellow-50 text-yellow-600' : 'bg-orange-50 text-orange-600'
                                                 }`}>
                                                 <FileText size={18} />
                                             </div>
@@ -380,12 +392,14 @@ export default function TenantDashboard() {
                                                 <p className="text-xs text-gray-400 font-mono">INV-{inv.id.toString().padStart(6, '0')}</p>
                                             </div>
                                         </div>
-                                        <span className={`text-xs font-bold px-2 py-1 rounded-lg ${inv.status.toLowerCase() === 'paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                        <span className={`text-xs font-bold px-2 py-1 rounded-lg uppercase ${compStatus === 'paid' ? 'bg-green-100 text-green-700' : 
+                                            compStatus === 'overdue' ? 'bg-red-100 text-red-700' : 
+                                            compStatus === 'unpaid' ? 'bg-yellow-100 text-yellow-700' : 'bg-orange-100 text-orange-700'
                                             }`}>
-                                            {inv.status.charAt(0).toUpperCase() + inv.status.slice(1).toLowerCase()}
+                                            {compStatus}
                                         </span>
                                     </div>
-                                ))
+                                )})
                             ) : (
                                 <div className="text-center py-8 text-gray-400 text-sm">No recent activity</div>
                             )}
