@@ -46,6 +46,7 @@ export interface User {
     nation: string;
     is_primary_tenant: boolean;
     branch_id?: number | null;
+    profile_picture?: string | null;
 }
 
 export interface Contract {

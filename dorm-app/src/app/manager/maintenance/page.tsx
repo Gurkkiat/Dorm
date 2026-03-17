@@ -13,8 +13,10 @@ interface MaintenanceWithDetails extends MaintenanceRequest {
     timeline?: MaintenanceTimeline[];
     room?: {
         room_number: string;
+        floor: number;
         building?: {
             branch_id: number;
+            name_building: string;
         }
     }
 }
@@ -63,7 +65,7 @@ export default function ManagerMaintenancePage() {
         try {
             let query = supabase
                 .from('maintenance_request')
-                .select('*, timeline:maintenance_timeline(*), room:room_id(room_number, building:building_id(branch_id))')
+                .select('*, timeline:maintenance_timeline(*), room:room_id(room_number, floor, building:building_id(branch_id, name_building))')
                 .order('requested_at', { ascending: false });
 
             // Apply Branch Filter
@@ -72,7 +74,7 @@ export default function ManagerMaintenancePage() {
                 // Using !inner forces the join to exist, effectively filtering by branch
                 query = supabase
                     .from('maintenance_request')
-                    .select('*, timeline:maintenance_timeline(*), room:room_id!inner(room_number, building:building_id!inner(branch_id))')
+                    .select('*, timeline:maintenance_timeline(*), room:room_id!inner(room_number, floor, building:building_id!inner(branch_id, name_building))')
                     .eq('room.building.branch_id', selectedBranchId)
                     .order('requested_at', { ascending: false });
             }
@@ -216,12 +218,12 @@ export default function ManagerMaintenancePage() {
                                 <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="py-4 px-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="bg-blue-50 p-2 rounded-lg text-blue-600 font-bold w-10 h-10 flex items-center justify-center">
-                                                {row.room?.room_number || '-'}
+                                            <div className="bg-blue-100 p-2 rounded-full text-blue-600">
+                                                <Wrench size={18} />
                                             </div>
                                             <div>
-                                                <p className="font-bold text-gray-800">{row.type_of_repair || 'General'}</p>
-                                                <p className="text-xs text-gray-500">Maintenance</p>
+                                                <p className="font-bold text-gray-800">Room {row.room?.room_number || '-'}</p>
+                                                <p className="text-xs text-gray-500">{row.room?.building?.name_building || '-'} · Floor {row.room?.floor || '-'}</p>
                                             </div>
                                         </div>
                                     </td>

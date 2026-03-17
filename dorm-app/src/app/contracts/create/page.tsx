@@ -24,7 +24,7 @@ export default function CreateContractPage() {
     // Room Data State
     const [rooms, setRooms] = useState<(Room & { residentCount: number; hasPrimaryTenant: boolean })[]>([]);
     const [roomType, setRoomType] = useState<'vacant' | 'occupied'>('vacant');
-    const [nextContractId, setNextContractId] = useState<number>(0);
+    const [branchContractCount, setBranchContractCount] = useState<number>(0);
 
     // Form Data State
     const [formData, setFormData] = useState({
@@ -67,20 +67,6 @@ export default function CreateContractPage() {
 
                 if (branchError) throw branchError;
                 setBranches(branchData || []);
-
-                // 2. Fetch Latest Contract ID for Preview
-                const { data: latestContract, error: contractError } = await supabase
-                    .from('contract')
-                    .select('id')
-                    .order('id', { ascending: false })
-                    .limit(1)
-                    .single();
-
-                if (!contractError && latestContract) {
-                    setNextContractId(latestContract.id + 1);
-                } else {
-                    setNextContractId(1); // Default if no contracts exist
-                }
 
                 // Check for logged-in Manager's branch
                 const storedRole = localStorage.getItem('user_role');
@@ -187,15 +173,29 @@ export default function CreateContractPage() {
         fetchRooms();
     }, [selectedBuildingId]);
 
-    // Update Contract Number Display
+    // Update Contract Number Display & Count per Branch
     useEffect(() => {
-        const branch = branches.find(b => b.id.toString() === selectedBranchId);
-        if (branch) {
-            setContractNumberDisplay(`${branch.city}_${branch.branches_name}_${nextContractId}`);
-        } else {
-            setContractNumberDisplay('Select Branch...');
+        async function fetchBranchContractCount() {
+            const branch = branches.find(b => b.id.toString() === selectedBranchId);
+            if (!branch) {
+                setContractNumberDisplay('Select Branch...');
+                setBranchContractCount(0);
+                return;
+            }
+
+            // Count contracts that belong to rooms in this branch
+            const { count, error } = await supabase
+                .from('contract')
+                .select('id, room:room_id!inner(building:building_id!inner(branch_id))', { count: 'exact', head: true })
+                .eq('room.building.branch_id', branch.id);
+
+            const nextNum = (error || count === null) ? 1 : count + 1;
+            setBranchContractCount(nextNum);
+            setContractNumberDisplay(`${branch.city}_${branch.branches_name}_${nextNum}`);
         }
-    }, [selectedBranchId, branches, nextContractId]);
+
+        fetchBranchContractCount();
+    }, [selectedBranchId, branches]);
 
     // Handle room type change effects
     useEffect(() => {

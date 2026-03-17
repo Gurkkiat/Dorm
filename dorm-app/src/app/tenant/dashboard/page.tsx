@@ -10,9 +10,20 @@ import {
 import { MaintenanceRequest, Invoice } from '@/types/database';
 import Loading from '@/components/ui/loading';
 
+type NotificationItem = {
+    id: string; // Unique string combining type and original ID
+    type: 'invoice' | 'overdue_invoice' | 'maintenance' | 'system';
+    title: string;
+    description: string;
+    date: string;
+    isRead: boolean;
+    link: string;
+};
+
 export default function TenantDashboard() {
     const [loading, setLoading] = useState(true);
     const [userName, setUserName] = useState('');
+    const [profilePic, setProfilePic] = useState<string | null>(null);
     const [stats, setStats] = useState({
         totalPayment: 0,
         pendingInvoices: 0,
@@ -23,6 +34,15 @@ export default function TenantDashboard() {
     const [maintenanceList, setMaintenanceList] = useState<MaintenanceRequest[]>([]);
     const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([]);
 
+    // Notifications State
+    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+    const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+
+    // Greeting State
+    const [greetingMessage, setGreetingMessage] = useState("Here's what's happening in your dorm today.");
+    const [isEditingGreeting, setIsEditingGreeting] = useState(false);
+    const [tempGreeting, setTempGreeting] = useState('');
+
     // Usage Goals State
     const [elecGoal, setElecGoal] = useState(300);
     const [waterGoal, setWaterGoal] = useState(50);
@@ -30,15 +50,26 @@ export default function TenantDashboard() {
     const [tempElecGoal, setTempElecGoal] = useState<number | ''>(300);
     const [tempWaterGoal, setTempWaterGoal] = useState<number | ''>(50);
 
-    // Load goals from local storage on mount
+    // Load goals & greeting from local storage on mount
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const savedElec = localStorage.getItem('tenant_elec_goal');
             const savedWater = localStorage.getItem('tenant_water_goal');
             if (savedElec && !isNaN(Number(savedElec))) setElecGoal(Number(savedElec));
             if (savedWater && !isNaN(Number(savedWater))) setWaterGoal(Number(savedWater));
+
+            const savedGreeting = localStorage.getItem('tenant_greeting');
+            if (savedGreeting) setGreetingMessage(savedGreeting);
         }
     }, []);
+
+    // Time-based greeting
+    const getTimeGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return 'Good morning';
+        if (hour < 17) return 'Good afternoon';
+        return 'Good evening';
+    };
 
     const getComputedStatus = (invoice: Invoice) => {
         let s = invoice.status?.toLowerCase() || '';
@@ -74,11 +105,14 @@ export default function TenantDashboard() {
                 // 1. Get User Details
                 const { data: userData } = await supabase
                     .from('users')
-                    .select('full_name')
+                    .select('full_name, profile_picture')
                     .eq('id', storedUserId)
                     .single();
 
-                if (userData) setUserName(userData.full_name);
+                if (userData) {
+                    setUserName(userData.full_name);
+                    if (userData.profile_picture) setProfilePic(userData.profile_picture);
+                }
 
                 // 2. Get User's Active Contract
                 const { data: contractData } = await supabase
@@ -149,6 +183,49 @@ export default function TenantDashboard() {
 
                 if (maintenances) setMaintenanceList(maintenances);
 
+                // 5. Build Notifications Array
+                const newNotifications: NotificationItem[] = [];
+
+                if (invoices) {
+                    const pendingInvoicesList = invoices.filter(inv => inv.status.toLowerCase() === 'unpaid' || inv.status.toLowerCase() === 'pending');
+                    pendingInvoicesList.forEach(inv => {
+                        const dueDateDesc = inv.due_date ? `Due on ${new Date(inv.due_date).toLocaleDateString('en-GB')}` : 'Action required';
+                        const isOverdue = inv.status?.toLowerCase() !== 'paid' && inv.due_date && new Date(inv.due_date) < new Date();
+                        const titlePrefix = isOverdue ? 'Overdue' : 'Unpaid';
+                        
+                        newNotifications.push({
+                            id: `inv_${inv.id}`,
+                            type: isOverdue ? 'overdue_invoice' : 'invoice',
+                            title: `${titlePrefix} Invoice: ${inv.room_total_cost?.toLocaleString() || 0} THB`,
+                            description: dueDateDesc,
+                            date: inv.bill_date || inv.due_date || new Date().toISOString(),
+                            isRead: false,
+                            link: '/tenant/payment'
+                        });
+                    });
+                }
+
+                if (maintenances) {
+                    maintenances.forEach(m => {
+                        let statusText = m.status_technician || 'Pending';
+                        if (statusText.toLowerCase() === 'in progress') statusText = 'In Progress';
+                        
+                        newNotifications.push({
+                            id: `maint_${m.id}`,
+                            type: 'maintenance',
+                            title: `Maintenance Update`,
+                            description: `Request #${m.request_number || m.id} is currently ${statusText}`,
+                            date: m.requested_at,
+                            isRead: false,
+                            link: '/tenant/maintenance'
+                        });
+                    });
+                }
+
+                // Sort newest first
+                newNotifications.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                setNotifications(newNotifications);
+
             } catch (error) {
                 console.error('Error loading dashboard:', error);
             } finally {
@@ -168,19 +245,140 @@ export default function TenantDashboard() {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">
-                        Welcome back, <span className="text-[#0047AB]">{userName.split(' ')[0]}</span> 👋
+                        {getTimeGreeting()}, <span className="text-[#0047AB]">{userName.split(' ')[0]}</span> 👋
                     </h1>
-                    <p className="text-gray-500 mt-1">Here's what's happening in your dorm today.</p>
+                    <div className="flex items-center gap-2 mt-1 group">
+                        {isEditingGreeting ? (
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="text"
+                                    value={tempGreeting}
+                                    onChange={(e) => setTempGreeting(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            const msg = tempGreeting.trim() || "Here's what's happening in your dorm today.";
+                                            setGreetingMessage(msg);
+                                            localStorage.setItem('tenant_greeting', msg);
+                                            setIsEditingGreeting(false);
+                                        } else if (e.key === 'Escape') {
+                                            setIsEditingGreeting(false);
+                                        }
+                                    }}
+                                    className="text-gray-500 text-sm bg-gray-100 border border-gray-200 rounded-lg px-3 py-1 focus:outline-none focus:border-[#0047AB] focus:ring-1 focus:ring-[#0047AB] w-72"
+                                    placeholder="Type your greeting message..."
+                                    autoFocus
+                                />
+                                <button
+                                    onClick={() => {
+                                        const msg = tempGreeting.trim() || "Here's what's happening in your dorm today.";
+                                        setGreetingMessage(msg);
+                                        localStorage.setItem('tenant_greeting', msg);
+                                        setIsEditingGreeting(false);
+                                    }}
+                                    className="p-1 bg-[#0047AB] text-white rounded-md hover:bg-[#00388A] transition-colors"
+                                >
+                                    <Check size={14} />
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <p className="text-gray-500">{greetingMessage}</p>
+                                <button
+                                    onClick={() => { setTempGreeting(greetingMessage); setIsEditingGreeting(true); }}
+                                    className="text-gray-300 hover:text-[#0047AB] opacity-0 group-hover:opacity-100 transition-all p-1 rounded-md hover:bg-blue-50"
+                                    title="Edit greeting"
+                                >
+                                    <Edit2 size={14} />
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button className="p-2.5 rounded-full bg-white border border-gray-200 text-gray-500 hover:text-[#0047AB] hover:border-[#0047AB] transition-all relative">
+                <div className="flex items-center gap-3 relative">
+                    <button 
+                        onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+                        className={`p-2.5 rounded-full border transition-all relative ${isNotificationOpen ? 'bg-blue-50 border-blue-200 text-[#0047AB]' : 'bg-white border-gray-200 text-gray-500 hover:text-[#0047AB] hover:border-[#0047AB]'}`}
+                    >
                         <Bell size={20} />
-                        <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+                        {notifications.length > 0 && (
+                            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-rose-500 rounded-full border border-white text-[10px] font-bold text-white flex items-center justify-center px-1">
+                                {notifications.length}
+                            </span>
+                        )}
                     </button>
+
+                    {/* Notification Dropdown */}
+                    {isNotificationOpen && (
+                        <>
+                            <div 
+                                className="fixed inset-0 z-40" 
+                                onClick={() => setIsNotificationOpen(false)} 
+                            />
+                            <div className="absolute top-12 right-14 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                                    <h3 className="font-bold text-gray-800">Notifications</h3>
+                                    {notifications.length > 0 && (
+                                        <span className="text-xs font-bold text-[#0047AB] bg-blue-50 px-2 py-0.5 rounded-full">
+                                            {notifications.length} New
+                                        </span>
+                                    )}
+                                </div>
+                                
+                                <div className="max-h-96 overflow-y-auto">
+                                    {notifications.length === 0 ? (
+                                        <div className="p-8 text-center text-gray-500 flex flex-col items-center gap-2">
+                                            <div className="p-3 bg-gray-50 rounded-full text-gray-300">
+                                                <Bell size={24} />
+                                            </div>
+                                            <p className="text-sm">You're all caught up!</p>
+                                        </div>
+                                    ) : (
+                                        <div className="divide-y divide-gray-50">
+                                            {notifications.map((notif) => (
+                                                <Link 
+                                                    href={notif.link} 
+                                                    key={notif.id}
+                                                    onClick={() => setIsNotificationOpen(false)}
+                                                    className="flex items-start gap-4 p-4 hover:bg-gray-50 transition-colors group"
+                                                >
+                                                    <div className={`p-2 rounded-xl shrink-0 ${
+                                                        notif.type === 'overdue_invoice' ? 'bg-rose-50 text-rose-600' :
+                                                        notif.type === 'invoice' ? 'bg-yellow-50 text-yellow-600' :
+                                                        notif.type === 'maintenance' ? 'bg-orange-50 text-orange-600' :
+                                                        'bg-blue-50 text-blue-600'
+                                                    }`}>
+                                                        {(notif.type === 'invoice' || notif.type === 'overdue_invoice') ? <Wallet size={16} /> :
+                                                         notif.type === 'maintenance' ? <Wrench size={16} /> :
+                                                         <Bell size={16} />}
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-gray-800 group-hover:text-[#0047AB] transition-colors">{notif.title}</p>
+                                                        <p className="text-xs text-gray-500 mt-0.5">{notif.description}</p>
+                                                        <p className="text-[10px] text-gray-400 mt-1 font-mono uppercase">
+                                                            {new Date(notif.date).toLocaleDateString('en-GB')}
+                                                        </p>
+                                                    </div>
+                                                </Link>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )}
+
                     <Link href="/tenant/profile">
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-[#0047AB] to-[#0066FF] flex items-center justify-center text-white font-bold shadow-sm shadow-blue-200 hover:shadow-md hover:scale-105 transition-all cursor-pointer">
-                            {userName.charAt(0) || 'T'}
-                        </div>
+                        {profilePic ? (
+                            <img 
+                                src={profilePic}
+                                alt="Profile"
+                                className="h-10 w-10 rounded-full object-cover shadow-sm shadow-blue-200 hover:shadow-md hover:scale-105 transition-all cursor-pointer"
+                            />
+                        ) : (
+                            <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-[#0047AB] to-[#0066FF] flex items-center justify-center text-white font-bold shadow-sm shadow-blue-200 hover:shadow-md hover:scale-105 transition-all cursor-pointer">
+                                {userName.charAt(0) || 'T'}
+                            </div>
+                        )}
                     </Link>
                 </div>
             </div>
@@ -382,7 +580,7 @@ export default function TenantDashboard() {
                                     <div key={inv.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-colors cursor-pointer group">
                                         <div className="flex items-center gap-3">
                                             <div className={`p-2.5 rounded-xl ${compStatus === 'paid' ? 'bg-green-50 text-green-600' : 
-                                                compStatus === 'overdue' ? 'bg-red-50 text-red-600' :
+                                                compStatus === 'overdue' ? 'bg-rose-50 text-rose-600' :
                                                 compStatus === 'unpaid' ? 'bg-yellow-50 text-yellow-600' : 'bg-orange-50 text-orange-600'
                                                 }`}>
                                                 <FileText size={18} />
@@ -393,7 +591,7 @@ export default function TenantDashboard() {
                                             </div>
                                         </div>
                                         <span className={`text-xs font-bold px-2 py-1 rounded-lg uppercase ${compStatus === 'paid' ? 'bg-green-100 text-green-700' : 
-                                            compStatus === 'overdue' ? 'bg-red-100 text-red-700' : 
+                                            compStatus === 'overdue' ? 'bg-rose-100 text-rose-700' : 
                                             compStatus === 'unpaid' ? 'bg-yellow-100 text-yellow-700' : 'bg-orange-100 text-orange-700'
                                             }`}>
                                             {compStatus}

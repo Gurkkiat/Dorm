@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { User as UserIcon, Mail, Phone, Home, CreditCard, Heart, Edit2, Save, X } from 'lucide-react';
+import { User as UserIcon, Mail, Phone, Home, CreditCard, Heart, Edit2, Save, X, Camera } from 'lucide-react';
 import Loading from '@/components/ui/loading';
 
 interface UserProfile {
@@ -13,12 +13,15 @@ interface UserProfile {
     sex: string;
     pet: string;
     identification_number: string;
+    profile_picture: string | null;
 }
 
 export default function TenantProfile() {
     const [loading, setLoading] = useState(true);
     const [isEditing, setIsEditing] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [editForm, setEditForm] = useState<Partial<UserProfile>>({});
@@ -38,7 +41,7 @@ export default function TenantProfile() {
 
             const { data, error } = await supabase
                 .from('users')
-                .select('id, full_name, phone, e_mail, sex, pet, identification_number')
+                .select('id, full_name, phone, e_mail, sex, pet, identification_number, profile_picture')
                 .eq('id', storedUserId)
                 .single();
 
@@ -95,6 +98,46 @@ export default function TenantProfile() {
         setEditForm(prev => ({ ...prev, [name]: value }));
     };
 
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !profile) return;
+
+        setUploadingImage(true);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${profile.id}_${Date.now()}.${fileExt}`;
+            const filePath = `${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(filePath, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data: publicUrlData } = supabase.storage
+                .from('avatars')
+                .getPublicUrl(filePath);
+
+            const profilePicUrl = publicUrlData.publicUrl;
+
+            // Update local state and DB immediately for the avatar
+            setEditForm(prev => ({ ...prev, profile_picture: profilePicUrl }));
+            setProfile(prev => prev ? { ...prev, profile_picture: profilePicUrl } : null);
+
+            await supabase
+                .from('users')
+                .update({ profile_picture: profilePicUrl })
+                .eq('id', profile.id);
+
+        } catch (error: any) {
+            console.error('Error uploading image:', error);
+            alert('Failed to upload image.');
+        } finally {
+            setUploadingImage(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
     if (loading) return <Loading />;
     if (!profile) return <div className="p-8 text-center text-gray-500">Profile data not found.</div>;
 
@@ -139,8 +182,39 @@ export default function TenantProfile() {
 
                 {/* Avatar Section */}
                 <div className="flex items-center gap-6 mb-10 pb-8 border-b border-gray-100">
-                    <div className="h-24 w-24 rounded-full bg-gradient-to-tr from-[#0047AB] to-[#0066FF] flex items-center justify-center text-white text-3xl font-bold shadow-lg shadow-blue-200 shrink-0">
-                        {profile.full_name.charAt(0) || 'T'}
+                    <div className="relative group">
+                        {editForm.profile_picture || profile.profile_picture ? (
+                            <img 
+                                src={editForm.profile_picture || profile.profile_picture || ''} 
+                                alt="Profile" 
+                                className="h-24 w-24 rounded-full object-cover shadow-lg shadow-blue-200 shrink-0"
+                            />
+                        ) : (
+                            <div className="h-24 w-24 rounded-full bg-gradient-to-tr from-[#0047AB] to-[#0066FF] flex items-center justify-center text-white text-3xl font-bold shadow-lg shadow-blue-200 shrink-0">
+                                {profile.full_name.charAt(0) || 'T'}
+                            </div>
+                        )}
+                        {isEditing && (
+                            <>
+                                <div 
+                                    className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity"
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    {uploadingImage ? (
+                                        <div className="w-6 h-6 border-2 border-white/30 border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                        <Camera className="text-white" size={24} />
+                                    )}
+                                </div>
+                                <input 
+                                    type="file" 
+                                    ref={fileInputRef} 
+                                    onChange={handleImageUpload} 
+                                    accept="image/*" 
+                                    className="hidden" 
+                                />
+                            </>
+                        )}
                     </div>
                     <div>
                         {isEditing ? (

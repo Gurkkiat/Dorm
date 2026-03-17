@@ -101,6 +101,9 @@ export default function ManagerMeterPage() {
     const totalWaterRevenue = filteredData.reduce((sum, r) => sum + calculateWaterCost(r), 0);
     const totalRevenue = totalElecRevenue + totalWaterRevenue;
 
+    const totalElecUsage = filteredData.reduce((sum, r) => sum + Math.max(0, r.current_electricity - r.prev_electricity), 0);
+    const totalWaterUsage = filteredData.reduce((sum, r) => sum + Math.max(0, r.current_water - r.prev_water), 0);
+
     if (loading) return <div className="p-8 text-center text-gray-500">Loading Dashboard...</div>;
 
     const currentDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -120,23 +123,13 @@ export default function ManagerMeterPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
                 {/* Total Revenue Card */}
-                <div className="bg-gradient-to-br from-[#0047AB] to-[#003380] rounded-2xl p-6 text-white shadow-lg relative overflow-hidden h-40 flex flex-col justify-between">
+                <div className="bg-gradient-to-br from-[#0047AB] to-[#003380] rounded-2xl p-6 text-white shadow-lg relative overflow-hidden h-40 flex flex-col justify-center items-center text-center">
                     <div className="absolute top-0 right-0 p-4 opacity-10 transform translate-x-4 -translate-y-4">
                         <DollarSign size={100} />
                     </div>
-                    <div>
-                        <p className="text-blue-200 text-sm font-medium">Total Estimated Revenue</p>
-                        <h2 className="text-3xl font-bold mt-1">฿ {totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h2>
-                    </div>
-                    <div className="z-10 flex gap-2 mt-2">
-                        <span className="bg-white/20 px-2 py-1 rounded text-xs flex items-center gap-1">
-                            <Zap size={10} className="text-yellow-300" />
-                            {totalElecRevenue.toLocaleString()}
-                        </span>
-                        <span className="bg-white/20 px-2 py-1 rounded text-xs flex items-center gap-1">
-                            <Droplets size={10} className="text-cyan-300" />
-                            {totalWaterRevenue.toLocaleString()}
-                        </span>
+                    <div className="z-10">
+                        <p className="text-blue-200 text-lg font-medium">Total Estimated Revenue</p>
+                        <h2 className="text-4xl font-bold mt-2">฿ {totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h2>
                     </div>
                 </div>
 
@@ -153,7 +146,12 @@ export default function ManagerMeterPage() {
                             <span className="font-bold text-gray-700">Electricity</span>
                         </div>
                         <h3 className="text-2xl font-bold text-gray-900">฿ {totalElecRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-                        <p className="text-xs text-gray-400 mt-1">based on {ELEC_RATE} THB/Unit</p>
+                        <div className="flex flex-col gap-1 mt-2 md:flex-row md:items-center">
+                            <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-100 flex items-center gap-1">
+                                <Zap size={12} />
+                                {totalElecUsage.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 3 })} Units
+                            </span>
+                        </div>
                     </div>
                 </div>
 
@@ -170,7 +168,12 @@ export default function ManagerMeterPage() {
                             <span className="font-bold text-gray-700">Water</span>
                         </div>
                         <h3 className="text-2xl font-bold text-gray-900">฿ {totalWaterRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-                        <p className="text-xs text-gray-400 mt-1">Unit & Fixed Rates</p>
+                        <div className="flex flex-col gap-1 mt-2 md:flex-row md:items-center">
+                            <span className="bg-cyan-50 text-cyan-700 px-2 py-1 rounded text-xs font-bold border border-cyan-100 flex items-center gap-1">
+                                <Droplets size={12} />
+                                {totalWaterUsage.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 3 })} Units
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
