@@ -5,10 +5,12 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Invoice } from '@/types/database';
 import { useManager } from '../ManagerContext';
-import { Search, Eye, CreditCard, TrendingUp, DollarSign, Droplets, Zap, User } from 'lucide-react';
+import { Search, Eye, CreditCard, TrendingUp, DollarSign, Droplets, Zap, User, Edit3, Trash2, AlertTriangle } from 'lucide-react';
 
 interface InvoiceWithDetails extends Invoice {
     contract?: {
+        id?: number;
+        status?: string;
         user?: {
             full_name: string;
             profile_picture?: string | null;
@@ -107,7 +109,7 @@ export default function ManagerPaymentsPage() {
         try {
             let query = supabase
                 .from('invoice')
-                .select('*, contract:contract_id!inner ( user:user_id ( full_name, profile_picture ), room:room_id!inner ( room_number, floor, building:building_id!inner ( branch_id, name_building ) ) )')
+                .select('*, contract:contract_id!inner ( id, status, user:user_id ( full_name, profile_picture ), room:room_id!inner ( room_number, floor, building:building_id!inner ( branch_id, name_building ) ) )')
                 .order('bill_date', { ascending: false });
 
             if (selectedBranchId !== 'All') {
@@ -180,56 +182,108 @@ export default function ManagerPaymentsPage() {
         }
     };
 
+    // Edit Bill State (for reject on complete contracts)
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editingInvoice, setEditingInvoice] = useState<InvoiceWithDetails | null>(null);
+    const [editForm, setEditForm] = useState<{
+        room_rent_cost: number | '';
+        room_water_cost: number | '';
+        room_elec_cost: number | '';
+        room_repair_cost: number | '';
+        room_deposit_cost: number | '';
+    }>({
+        room_rent_cost: 0,
+        room_water_cost: 0,
+        room_elec_cost: 0,
+        room_repair_cost: 0,
+        room_deposit_cost: 0,
+    });
+
     const handleRejectInModal = async () => {
         if (!selectedInvoice) return;
-        if (!confirm(`Are you sure you want to REJECT Invoice #${selectedInvoice.id}?`)) return;
+        const contractStatus = selectedInvoice.contract?.status?.toLowerCase() || '';
 
+        if (contractStatus === 'incomplete') {
+            // Case 1: Incomplete contract → delete contract and invoice
+            if (!confirm(`This is a new tenant (incomplete contract).\nRejecting will DELETE this contract and invoice permanently.\n\nAre you sure?`)) return;
+            setProcessing(true);
+            try {
+                // Delete invoice first (foreign key constraint)
+                const { error: invError } = await supabase
+                    .from('invoice')
+                    .delete()
+                    .eq('id', selectedInvoice.id);
+                if (invError) throw invError;
+
+                // Delete contract
+                if (selectedInvoice.contract?.id) {
+                    const { error: contractError } = await supabase
+                        .from('contract')
+                        .delete()
+                        .eq('id', selectedInvoice.contract.id);
+                    if (contractError) throw contractError;
+                }
+
+                setData(prev => prev.filter(inv => inv.id !== selectedInvoice.id));
+                alert(`Contract and Invoice #${selectedInvoice.id} have been deleted.`);
+                closeModal();
+            } catch (error) {
+                console.error('Error deleting contract:', error);
+                alert('Error deleting contract. Please try again.');
+            } finally {
+                setProcessing(false);
+            }
+        } else {
+            // Case 2: Complete contract → open edit bill form
+            setEditingInvoice(selectedInvoice);
+            setEditForm({
+                room_rent_cost: selectedInvoice.room_rent_cost || 0,
+                room_water_cost: selectedInvoice.room_water_cost || 0,
+                room_elec_cost: selectedInvoice.room_elec_cost || 0,
+                room_repair_cost: selectedInvoice.room_repair_cost || 0,
+                room_deposit_cost: selectedInvoice.room_deposit_cost || 0,
+            });
+            closeModal();
+            setShowEditModal(true);
+        }
+    };
+
+    const editFormTotal = (Number(editForm.room_rent_cost) || 0) + (Number(editForm.room_water_cost) || 0) + (Number(editForm.room_elec_cost) || 0) + (Number(editForm.room_repair_cost) || 0) + (Number(editForm.room_deposit_cost) || 0);
+
+    const handleSaveEdit = async () => {
+        if (!editingInvoice) return;
         setProcessing(true);
         try {
+            const finalForm = {
+                room_rent_cost: Number(editForm.room_rent_cost) || 0,
+                room_water_cost: Number(editForm.room_water_cost) || 0,
+                room_elec_cost: Number(editForm.room_elec_cost) || 0,
+                room_repair_cost: Number(editForm.room_repair_cost) || 0,
+                room_deposit_cost: Number(editForm.room_deposit_cost) || 0,
+            };
             const { error } = await supabase
                 .from('invoice')
-                .update({ status: 'Unpaid', payment_slip: null }) // Or maybe 'Void'? But keeping Unpaid/Rejected logic for now.
-                // Actually, if we reject an issuance, maybe we want to delete it or set to 'Cancelled'?
-                // For now, let's keep existing logic: 'Unpaid' & null slip (if it had one).
-                // If it was a 'Pending' issuance, setting it to 'Unpaid' is basically the same as Approving it in user's logic (Yellow).
-                // Wait, user said "Reject". If it's a new invoice, rejecting might mean "Edit it". 
-                // But requested "Reject" button. Let's assume it stays Pending or goes to a "Rejected" state?
-                // The prompt said: "ถ้ารายการไม่ถูกต้องให้ manager กด Reject ได้"
-                // If I set to 'Unpaid', it becomes issued.
-                // Maybe we should just close the modal and let them edit? But there is no edit.
-                // Let's stick to the previous `handleReject` logic which was: update status to 'Unpaid', payment_slip: null.
-                .eq('id', selectedInvoice.id);
+                .update({
+                    ...finalForm,
+                    room_total_cost: editFormTotal,
+                    status: 'Unpaid',
+                    payment_slip: null,
+                })
+                .eq('id', editingInvoice.id);
 
             if (error) throw error;
 
-            // If we reject an issuance (Pending), setting to Unpaid makes it... Issued?
-            // If the goal is to correct data, maybe we need to delete/edit?
-            // For now, I will follow the previous pattern but maybe just close modal if they want to "Reject" (Cancel action basically).
-            // But if they explicitly want to Reject a PAYMENT slip, then clearing slip is correct.
-            // If they reject a NEW invoice, maybe delete it?
-            // Let's use the existing logic for now to be safe.
-
-            // Wait, if I use the existing handleReject logic: it sets status 'Unpaid'.
-            // If it was 'Pending' (New), setting 'Unpaid' makes it appear as if it was approved (Yellow).
-            // That might be wrong for "Rejecting" a new invoice.
-            // But let's assume "Reject" here primarily targets the "Confirm Payment" flow or "Cancel" the action.
-            // The prompt says "Verify details... if correct Confirm, if not Reject".
-            // I'll implement a 'Reject' that acts like the previous handleReject (clears slip / sets Unpaid).
-
-            // Reuse existing helper logic but for the modal's invoice
-            const { error: rejectError } = await supabase
-                .from('invoice')
-                .update({ status: 'Unpaid', payment_slip: null })
-                .eq('id', selectedInvoice.id);
-
-            if (rejectError) throw rejectError;
-
-            setData(prev => prev.filter(inv => inv.id !== selectedInvoice.id)); // Remove from Pending list
-            alert(`Invoice #${selectedInvoice.id} rejected.`);
-            closeModal();
+            setData(prev => prev.map(inv =>
+                inv.id === editingInvoice.id
+                    ? { ...inv, ...finalForm, room_total_cost: editFormTotal, status: 'Unpaid', payment_slip: null }
+                    : inv
+            ));
+            alert(`Invoice #${editingInvoice.id} has been updated and set to Unpaid.`);
+            setShowEditModal(false);
+            setEditingInvoice(null);
         } catch (error) {
-            console.error('Error rejecting:', error);
-            alert('Error rejecting invoice.');
+            console.error('Error updating invoice:', error);
+            alert('Error saving changes.');
         } finally {
             setProcessing(false);
         }
@@ -241,32 +295,37 @@ export default function ManagerPaymentsPage() {
         setProcessing(false);
     };
 
-    // Keep the old handleReject for the inline button if needed, or remove it if modal covers all.
-    // The previous inline buttons were: [Confirm/Approve] [Reject]
-    // Now [Approve] -> Modal -> [Confirm] [Reject]
-    // So the inline [Reject] button might be redundant or can call handleRejectInModal if we passed ID.
-    // But let's keep the inline one as is for quick reject? 
-    // Actually, user said: "manager กด Approve Issue ต้องการให้ มีอีกขึ้นตอนแทรกขึ้นมา... กดยืนยัน ... กด Reject ได้"
-    // So the Modal is the place for decision.
-    // I will REMOVE the inline Reject button to force them to open the modal (via Approve) or keep it?
-    // User didn't say remove inline reject. But "Approve" triggers modal.
-    // I will leave the inline Reject button for now but maybe hiding it is better UX?
-    // Let's just focus on the Modal logic.
+    const handleReject = async (invoice: InvoiceWithDetails) => {
+        const contractStatus = invoice.contract?.status?.toLowerCase() || '';
 
-    const handleReject = async (id: number) => {
-        if (!confirm(`Reject Invoice #${id}?`)) return;
-        try {
-            const { error } = await supabase
-                .from('invoice')
-                .update({ status: 'Unpaid', payment_slip: null })
-                .eq('id', id);
+        if (contractStatus === 'incomplete') {
+            if (!confirm(`This is a new tenant (incomplete contract).\nRejecting will DELETE this contract and invoice permanently.\n\nAre you sure?`)) return;
+            try {
+                const { error: invError } = await supabase.from('invoice').delete().eq('id', invoice.id);
+                if (invError) throw invError;
 
-            if (error) throw error;
-            setData(prev => prev.filter(inv => inv.id !== id));
-            alert(`Invoice #${id} rejected.`);
-        } catch (error) {
-            console.error('Error rejecting invoice:', error);
-            alert('Error rejecting invoice.');
+                if (invoice.contract?.id) {
+                    const { error: contractError } = await supabase.from('contract').delete().eq('id', invoice.contract.id);
+                    if (contractError) throw contractError;
+                }
+
+                setData(prev => prev.filter(inv => inv.id !== invoice.id));
+                alert(`Contract and Invoice #${invoice.id} have been deleted.`);
+            } catch (error) {
+                console.error('Error deleting contract:', error);
+                alert('Error deleting contract. Please try again.');
+            }
+        } else {
+            // Open edit form
+            setEditingInvoice(invoice);
+            setEditForm({
+                room_rent_cost: invoice.room_rent_cost || 0,
+                room_water_cost: invoice.room_water_cost || 0,
+                room_elec_cost: invoice.room_elec_cost || 0,
+                room_repair_cost: invoice.room_repair_cost || 0,
+                room_deposit_cost: invoice.room_deposit_cost || 0,
+            });
+            setShowEditModal(true);
         }
     };
 
@@ -481,11 +540,12 @@ export default function ManagerPaymentsPage() {
                                     <td className="py-4 px-4">
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${
                                             row.status?.toLowerCase() === 'paid' ? 'bg-green-100 text-green-700' :
-                                            (row.status?.toLowerCase() !== 'paid' && row.due_date && new Date(row.due_date) < new Date()) ? 'bg-red-100 text-red-700' :
                                             row.status?.toLowerCase() === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                            (row.status?.toLowerCase() !== 'paid' && row.due_date && new Date(row.due_date) < new Date()) ? 'bg-red-100 text-red-700' :
                                             'bg-gray-100 text-gray-500'
                                         }`}>
                                             {row.status?.toLowerCase() === 'paid' ? 'Paid' :
+                                             row.status?.toLowerCase() === 'pending' ? 'Pending' :
                                              (row.status?.toLowerCase() !== 'paid' && row.due_date && new Date(row.due_date) < new Date()) ? 'Overdue' :
                                              row.status}
                                         </span>
@@ -500,7 +560,7 @@ export default function ManagerPaymentsPage() {
                                                     {row.payment_slip ? 'Confirm Payment' : 'Approve'}
                                                 </button>
                                                 <button
-                                                    onClick={() => handleReject(row.id)}
+                                                    onClick={() => handleReject(row)}
                                                     className="bg-red-50 text-red-500 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border border-red-100"
                                                 >
                                                     Reject
@@ -534,7 +594,12 @@ export default function ManagerPaymentsPage() {
                         <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-slide-up">
                             <div className="bg-[#0047AB] p-4 text-white">
                                 <h2 className="text-xl font-bold">Verify Invoice Details</h2>
-                                <p className="text-sm opacity-80">Invoice #{selectedInvoice.id}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <p className="text-sm opacity-80">Invoice #{selectedInvoice.id}</p>
+                                    {selectedInvoice.contract?.status?.toLowerCase() === 'incomplete' && (
+                                        <span className="bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-full">New Tenant</span>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="p-6 space-y-4">
@@ -573,13 +638,17 @@ export default function ManagerPaymentsPage() {
                                 </div>
 
                                 <div className="p-4 bg-gray-50 flex gap-3">
-                                    <button
-                                        onClick={handleRejectInModal}
-                                        disabled={processing}
-                                        className="flex-1 px-4 py-2 bg-white border border-red-200 text-red-500 rounded-xl font-bold hover:bg-red-50 transition-colors"
-                                    >
-                                        Reject
-                                    </button>
+                                        <button
+                                            onClick={handleRejectInModal}
+                                            disabled={processing}
+                                            className="flex-1 px-4 py-2 bg-white border border-red-200 text-red-500 rounded-xl font-bold hover:bg-red-50 transition-colors flex items-center justify-center gap-1.5"
+                                        >
+                                            {selectedInvoice.contract?.status?.toLowerCase() === 'incomplete' ? (
+                                                <><Trash2 size={14} /> Delete</>
+                                            ) : (
+                                                <><Edit3 size={14} /> Edit Bill</>
+                                            )}
+                                        </button>
                                     <button
                                         onClick={closeModal}
                                         disabled={processing}
@@ -599,6 +668,71 @@ export default function ManagerPaymentsPage() {
                         </div>
                     </div>
                 )}
+
+            {/* Edit Bill Modal */}
+            {showEditModal && editingInvoice && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+                        <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-4 text-white">
+                            <h2 className="text-xl font-bold flex items-center gap-2"><Edit3 size={20} /> Edit Invoice</h2>
+                            <p className="text-sm opacity-80">Invoice #{editingInvoice.id} · {editingInvoice.contract?.user?.full_name}</p>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+                                <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                                <p className="text-xs text-amber-800">Payment was rejected. Please correct the amounts below. The invoice will be set back to <strong>Unpaid</strong>.</p>
+                            </div>
+
+                            <div className="space-y-3">
+                                {[
+                                    { label: 'Rent', key: 'room_rent_cost', icon: <DollarSign size={14} />, color: 'text-gray-600' },
+                                    { label: 'Water', key: 'room_water_cost', icon: <Droplets size={14} />, color: 'text-cyan-600' },
+                                    { label: 'Electric', key: 'room_elec_cost', icon: <Zap size={14} />, color: 'text-yellow-600' },
+                                    { label: 'Repair', key: 'room_repair_cost', icon: <TrendingUp size={14} />, color: 'text-red-500' },
+                                    { label: 'Deposit', key: 'room_deposit_cost', icon: <CreditCard size={14} />, color: 'text-purple-600' },
+                                ].map(field => (
+                                    <div key={field.key} className="flex items-center gap-3">
+                                        <div className={`flex items-center gap-1.5 w-24 text-sm ${field.color}`}>
+                                            {field.icon}
+                                            <span>{field.label}</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            className="flex-1 bg-gray-100 text-gray-800 text-sm font-bold rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                                            value={editForm[field.key as keyof typeof editForm]}
+                                            onChange={(e) => setEditForm(prev => ({ ...prev, [field.key]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="border-t pt-3 flex justify-between items-center">
+                                <span className="font-bold text-gray-700">New Total</span>
+                                <span className="text-xl font-bold text-orange-600">฿ {editFormTotal.toLocaleString()}</span>
+                            </div>
+                        </div>
+
+                        <div className="p-4 bg-gray-50 flex gap-3">
+                            <button
+                                onClick={() => { setShowEditModal(false); setEditingInvoice(null); }}
+                                disabled={processing}
+                                className="flex-1 px-4 py-2 bg-white border border-gray-300 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSaveEdit}
+                                disabled={processing}
+                                className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-xl font-bold hover:bg-orange-600 transition-colors shadow-lg"
+                            >
+                                {processing ? 'Saving...' : 'Save & Set Unpaid'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

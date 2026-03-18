@@ -51,7 +51,11 @@ export default function LoginPage() {
             // 3. Redirect based on role
             // 3. Redirect based on role
             const role = data.role?.toLowerCase() || '';
-            if (role.includes('manager') || role === 'admin') {
+            if (role === 'admin') {
+                router.push('/admin/dashboard');
+            } else if (role === 'owner') {
+                router.push('/owner/dashboard');
+            } else if (role.includes('manager')) {
                 router.push('/manager/dashboard');
             } else if (role === 'mechanic') {
                 router.push('/mechanic/maintenance');

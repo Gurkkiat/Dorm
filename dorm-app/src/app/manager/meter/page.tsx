@@ -31,6 +31,8 @@ export default function ManagerMeterPage() {
     const [data, setData] = useState<MeterReading[]>([]);
     const [filteredData, setFilteredData] = useState<MeterReading[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedMonth, setSelectedMonth] = useState<string>('All');
+    const [selectedYear, setSelectedYear] = useState<string>('All');
 
     // Rates
     const WATER_RATE = 18; // Standardized to 18
@@ -50,9 +52,36 @@ export default function ManagerMeterPage() {
                 item.contract?.room?.room_number.toLowerCase().includes(lower)
             );
         }
+        // Filter by Month
+        if (selectedMonth !== 'All') {
+            res = res.filter(item => new Date(item.reading_date).getMonth().toString() === selectedMonth);
+        }
+
+        // Filter by Year
+        if (selectedYear !== 'All') {
+            res = res.filter(item => new Date(item.reading_date).getFullYear().toString() === selectedYear);
+        }
 
         setFilteredData(res);
-    }, [data, searchTerm]);
+    }, [data, searchTerm, selectedMonth, selectedYear]);
+
+    // Derived Years
+    const availableYears = Array.from(new Set(data.map(d => new Date(d.reading_date).getFullYear().toString()))).sort((a,b) => b.localeCompare(a));
+    const months = [
+        { value: 'All', label: 'All Months' },
+        { value: '0', label: 'January' },
+        { value: '1', label: 'February' },
+        { value: '2', label: 'March' },
+        { value: '3', label: 'April' },
+        { value: '4', label: 'May' },
+        { value: '5', label: 'June' },
+        { value: '6', label: 'July' },
+        { value: '7', label: 'August' },
+        { value: '8', label: 'September' },
+        { value: '9', label: 'October' },
+        { value: '10', label: 'November' },
+        { value: '11', label: 'December' },
+    ];
 
     async function fetchMeterReadings() {
         setLoading(true);
@@ -149,7 +178,7 @@ export default function ManagerMeterPage() {
                         <div className="flex flex-col gap-1 mt-2 md:flex-row md:items-center">
                             <span className="bg-yellow-50 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-100 flex items-center gap-1">
                                 <Zap size={12} />
-                                {totalElecUsage.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 3 })} Units
+                                {totalElecUsage.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Units
                             </span>
                         </div>
                     </div>
@@ -171,7 +200,7 @@ export default function ManagerMeterPage() {
                         <div className="flex flex-col gap-1 mt-2 md:flex-row md:items-center">
                             <span className="bg-cyan-50 text-cyan-700 px-2 py-1 rounded text-xs font-bold border border-cyan-100 flex items-center gap-1">
                                 <Droplets size={12} />
-                                {totalWaterUsage.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 3 })} Units
+                                {totalWaterUsage.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Units
                             </span>
                         </div>
                     </div>
@@ -183,16 +212,41 @@ export default function ManagerMeterPage() {
                 <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
                     <h3 className="font-bold text-lg text-gray-800">Recent Readings</h3>
 
-                    {/* Search */}
-                    <div className="relative">
-                        <input
-                            type="text"
-                            placeholder="Search Room"
-                            className="bg-gray-100 text-gray-700 text-sm rounded-full px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                        <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+                    <div className="flex flex-wrap gap-3 items-center">
+                        {/* Month Filter */}
+                        <select
+                            className="bg-gray-100 text-gray-700 text-sm rounded-xl px-4 py-2 border-r-8 border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                        >
+                            {months.map(m => (
+                                <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                        </select>
+
+                        {/* Year Filter */}
+                        <select
+                            className="bg-gray-100 text-gray-700 text-sm rounded-xl px-4 py-2 border-r-8 border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(e.target.value)}
+                        >
+                            <option value="All">All Years</option>
+                            {availableYears.map(year => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
+
+                        {/* Search */}
+                        <div className="relative">
+                            <input
+                                type="text"
+                                placeholder="Search Room"
+                                className="bg-gray-100 text-gray-700 text-sm rounded-xl px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                            <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+                        </div>
                     </div>
                 </div>
 
@@ -207,6 +261,8 @@ export default function ManagerMeterPage() {
                         </thead>
                         <tbody className="text-sm divide-y divide-gray-50">
                             {filteredData.map((row) => {
+                                const waterUsage = Math.max(0, row.current_water - row.prev_water);
+                                const elecUsage = Math.max(0, row.current_electricity - row.prev_electricity);
                                 const waterCost = calculateWaterCost(row);
                                 const elecCost = calculateElecCost(row);
 
@@ -219,35 +275,57 @@ export default function ManagerMeterPage() {
                                                 </div>
                                                 <div>
                                                     <p className="font-bold text-gray-800">Room {row.contract?.room?.room_number || '-'}</p>
-                                                    <p className="text-xs text-gray-500">{new Date(row.reading_date).toLocaleDateString()}</p>
+                                                    <p className="text-xs text-gray-500">{new Date(row.reading_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                                                 </div>
                                             </div>
                                         </td>
+                                        
+                                        {/* Water Column */}
                                         <td className="py-4 px-4">
-                                            <div className="flex items-center gap-4">
-                                                <div className="text-right">
-                                                    <p className="text-xs text-gray-400 uppercase">Prev</p>
-                                                    <p className="font-medium text-gray-600">{row.prev_water.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                            <div className="flex flex-col gap-2">
+                                                <div className="flex items-center gap-3 text-sm">
+                                                    <div className="text-gray-500">
+                                                        <span className="text-xs uppercase mr-1">Prev:</span>
+                                                        <span className="font-medium">{row.prev_water.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                    </div>
+                                                    <div className="text-gray-300">→</div>
+                                                    <div className="text-cyan-700">
+                                                        <span className="text-xs uppercase font-bold mr-1">Curr:</span>
+                                                        <span className="font-bold">{row.current_water.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                    </div>
                                                 </div>
-                                                <div className="text-gray-300">→</div>
-                                                <div>
-                                                    <p className="text-xs text-cyan-500 uppercase font-bold">Curr</p>
-                                                    <p className="font-bold text-gray-800">{row.current_water.toLocaleString(undefined, { minimumFractionDigits: 4 })}</p>
-                                                    <p className="text-xs text-cyan-600 font-bold mt-1">฿ {waterCost.toLocaleString()}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="bg-cyan-50 text-cyan-700 px-2 py-0.5 rounded text-xs font-bold border border-cyan-100 flex items-center gap-1">
+                                                        <Droplets size={10} /> +{waterUsage.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Units
+                                                    </span>
+                                                    <span className="text-xs font-bold text-gray-700">
+                                                        = ฿ {waterCost.toLocaleString()}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </td>
+
+                                        {/* Electricity Column */}
                                         <td className="py-4 px-4">
-                                            <div className="flex items-center gap-4">
-                                                <div className="text-right">
-                                                    <p className="text-xs text-gray-400 uppercase">Prev</p>
-                                                    <p className="font-medium text-gray-600">{row.prev_electricity.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
+                                            <div className="flex flex-col gap-2">
+                                                <div className="flex items-center gap-3 text-sm">
+                                                    <div className="text-gray-500">
+                                                        <span className="text-xs uppercase mr-1">Prev:</span>
+                                                        <span className="font-medium">{row.prev_electricity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                    </div>
+                                                    <div className="text-gray-300">→</div>
+                                                    <div className="text-yellow-700">
+                                                        <span className="text-xs uppercase font-bold mr-1">Curr:</span>
+                                                        <span className="font-bold">{row.current_electricity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                    </div>
                                                 </div>
-                                                <div className="text-gray-300">→</div>
-                                                <div>
-                                                    <p className="text-xs text-yellow-500 uppercase font-bold">Curr</p>
-                                                    <p className="font-bold text-gray-800">{row.current_electricity.toLocaleString(undefined, { minimumFractionDigits: 3 })}</p>
-                                                    <p className="text-xs text-yellow-600 font-bold mt-1">฿ {elecCost.toLocaleString()}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded text-xs font-bold border border-yellow-100 flex items-center gap-1">
+                                                        <Zap size={10} /> +{elecUsage.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Units
+                                                    </span>
+                                                    <span className="text-xs font-bold text-gray-700">
+                                                        = ฿ {elecCost.toLocaleString()}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </td>

@@ -1,11 +1,12 @@
 'use client';
 
-import { Building2, LayoutGrid, DollarSign, Wrench, Gauge, Users, User, LogOut } from 'lucide-react';
+import { Building2, LayoutGrid, DollarSign, Wrench, Gauge, Users, User, LogOut, UserCog } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { ManagerProvider, useManager } from './ManagerContext';
+import ProfileModal from '@/components/ProfileModal';
 
 function ManagerLayoutContent({
     children,
@@ -18,6 +19,8 @@ function ManagerLayoutContent({
     const [username, setUsername] = useState('Manager'); // [RESTORED]
     const [userRole, setUserRole] = useState('Manager'); // [NEW] - Default to Manager
     const [isManagerLocked, setIsManagerLocked] = useState(false);
+    const [profilePicture, setProfilePicture] = useState<string | null>(null);
+    const [showProfile, setShowProfile] = useState(false);
 
     useEffect(() => {
         // In a real app, you might fetch this from a context or re-verify the session
@@ -30,6 +33,10 @@ function ManagerLayoutContent({
 
         if (storedRole) {
             setUserRole(storedRole);
+            const lowerRole = storedRole.toLowerCase();
+            if (lowerRole !== 'manager' && lowerRole !== 'admin') {
+                router.push('/login');
+            }
         }
 
         if (storedRole && storedRole.toLowerCase() === 'manager' && storedBranchId) {
@@ -40,11 +47,18 @@ function ManagerLayoutContent({
             setUsername(storedName);
             fetchBranches(storedName);
         } else {
-            // Fallback for dev/testing if no login
-            const defaultUser = 'Somsak Rakthai'; // Manager of Branch 1
+            const defaultUser = 'Somsak Rakthai';
             setUsername(defaultUser);
             localStorage.setItem('user_name', defaultUser);
             fetchBranches(defaultUser);
+        }
+
+        // Load profile picture
+        const uid = localStorage.getItem('user_id');
+        if (uid) {
+            supabase.from('users').select('profile_picture').eq('id', uid).single().then(({ data }) => {
+                if (data?.profile_picture) setProfilePicture(data.profile_picture);
+            });
         }
     }, []);
 
@@ -99,10 +113,8 @@ function ManagerLayoutContent({
         { name: 'Manage Tenant', href: '/manager/tenants', icon: Users },
     ];
 
-    if (userRole === 'admin' || userRole === 'Admin') {
-        navItems.push({ name: 'Manage Users', href: '/manager/users', icon: User });
-    }
-
+    // Removed Manage Users from here as it's now in /admin/owners
+    
     const currentBranch = branches.find(b => b.id === selectedBranchId);
 
     return (
@@ -162,15 +174,23 @@ function ManagerLayoutContent({
 
                 {/* User Profile & Logout */}
                 <div className="p-4 bg-[#003380]">
-                    <div className="flex items-center mb-4">
-                        <div className="bg-white p-1 rounded-full text-[#0047AB]">
-                            <User size={24} />
+                    <button
+                        onClick={() => setShowProfile(true)}
+                        className="flex items-center mb-4 w-full hover:bg-blue-600/40 rounded-xl p-2 transition-colors group"
+                    >
+                        <div className="bg-white p-0.5 rounded-full text-[#0047AB] shrink-0 overflow-hidden w-9 h-9 flex items-center justify-center">
+                            {profilePicture ? (
+                                <img src={profilePicture} alt="Profile" className="w-full h-full object-cover rounded-full" />
+                            ) : (
+                                <User size={20} />
+                            )}
                         </div>
-                        <div className="ml-3 overflow-hidden">
+                        <div className="ml-3 overflow-hidden text-left flex-1">
                             <p className="text-sm font-bold truncate">{username}</p>
                             <p className="text-xs text-blue-300">{userRole}</p>
                         </div>
-                    </div>
+                        <UserCog size={14} className="text-blue-400 group-hover:text-white shrink-0" />
+                    </button>
 
                     <button
                         onClick={handleLogout}
@@ -186,6 +206,14 @@ function ManagerLayoutContent({
             <main className="flex-1 ml-64 p-8 overflow-y-auto">
                 {children}
             </main>
+
+            {/* Profile Modal */}
+            {showProfile && (
+                <ProfileModal
+                    accentColor="blue"
+                    onClose={() => setShowProfile(false)}
+                />
+            )}
         </div>
     );
 }
