@@ -29,7 +29,8 @@ export default function TenantDashboard() {
         pendingInvoices: 0,
         lastPaymentDate: '-',
         elecUsage: 0,
-        waterUsage: 0
+        waterUsage: 0,
+        nextBillDate: '-'
     });
     const [maintenanceList, setMaintenanceList] = useState<MaintenanceRequest[]>([]);
     const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([]);
@@ -117,7 +118,7 @@ export default function TenantDashboard() {
                 // 2. Get User's Active Contract
                 const { data: contractData } = await supabase
                     .from('contract')
-                    .select('id, room_id, status')
+                    .select('id, room_id, status, move_in')
                     .eq('user_id', storedUserId)
                     .in('status', ['Active', 'active', 'complete', 'Complete', 'incomplete'])
                     .single();
@@ -160,12 +161,43 @@ export default function TenantDashboard() {
 
                     const lastPaid = invoices.find(inv => inv.status.toLowerCase() === 'paid');
 
+                    let nextBillDateStr = '-';
+                    if (contractData?.move_in) {
+                        const today = new Date();
+                        const moveInDate = new Date(contractData.move_in);
+                        let billingDay = moveInDate.getDate();
+                        
+                        let nextBill = new Date(today.getFullYear(), today.getMonth(), billingDay);
+                        
+                        // Handle end of month edge cases
+                        const lastDayOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                        if (billingDay > lastDayOfCurrentMonth) {
+                            nextBill = new Date(today.getFullYear(), today.getMonth(), lastDayOfCurrentMonth);
+                        }
+
+                        // Also we subtract 1 day from new Date to see if today is perfectly billing day, usually bills come out same day, but let's just say if today >= nextBill, the next bill is next month
+                        const todayWithoutTime = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                        if (nextBill <= todayWithoutTime) {
+                            // Move to next month
+                            nextBill.setMonth(nextBill.getMonth() + 1);
+                            const lastDayOfNextMonth = new Date(nextBill.getFullYear(), nextBill.getMonth() + 1, 0).getDate();
+                            if (billingDay > lastDayOfNextMonth) {
+                                nextBill.setDate(lastDayOfNextMonth);
+                            } else {
+                                nextBill.setDate(billingDay);
+                            }
+                        }
+                        
+                        nextBillDateStr = nextBill.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                    }
+
                     setStats({
                         totalPayment: totalDue,
                         pendingInvoices: unpaid.length,
                         lastPaymentDate: lastPaid?.paid_date ? new Date(lastPaid.paid_date).toLocaleDateString('en-GB') : '-',
                         elecUsage: Number(actualElecUsage.toFixed(2)),
-                        waterUsage: Number(actualWaterUsage.toFixed(2))
+                        waterUsage: Number(actualWaterUsage.toFixed(2)),
+                        nextBillDate: nextBillDateStr
                     });
 
                     setRecentInvoices(invoices.slice(0, 3));
@@ -393,9 +425,16 @@ export default function TenantDashboard() {
                             <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
                                 <Wallet size={24} className="text-white" />
                             </div>
-                            <span className="bg-white/20 text-xs font-bold px-2 py-1 rounded-lg backdrop-blur-sm">
-                                {stats.pendingInvoices} Pending
-                            </span>
+                            <div className="flex flex-col items-end gap-1.5">
+                                <span className="bg-white/20 text-[10px] font-bold px-2.5 py-1 rounded-lg backdrop-blur-sm uppercase tracking-wider text-blue-50 flex items-center gap-1.5 border border-white/10 shadow-sm">
+                                    <Calendar size={10} /> Next Bill: {stats.nextBillDate}
+                                </span>
+                                {stats.pendingInvoices > 0 && (
+                                    <span className="bg-rose-500/90 text-[10px] font-bold px-2 py-1 rounded-lg backdrop-blur-sm shadow-sm uppercase tracking-wider">
+                                        {stats.pendingInvoices} Pending
+                                    </span>
+                                )}
+                            </div>
                         </div>
                         <p className="text-blue-100 text-sm font-medium mb-1">Total Payment Due</p>
                         <h2 className="text-3xl font-bold">{stats.totalPayment.toLocaleString()} <span className="text-lg font-normal opacity-80">THB</span></h2>

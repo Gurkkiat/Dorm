@@ -72,6 +72,25 @@ export default function ManageBuildingsPage() {
         status: 'Available'
     });
 
+    // Bulk Mode Form
+    const [createMode, setCreateMode] = useState<'single' | 'bulk'>('single');
+    const [bulkForm, setBulkForm] = useState({
+        start_floor: 1,
+        end_floor: 1,
+        rooms_per_floor: 10,
+        rent_price: 5000,
+        pet_status: false
+    });
+
+    // Edit Room Modal Form & State
+    const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
+    const [showEditRoomModal, setShowEditRoomModal] = useState(false);
+    const [currentTenant, setCurrentTenant] = useState<any>(null);
+    const [editRoomForm, setEditRoomForm] = useState({
+        rent_price: 5000,
+        pet_status: false
+    });
+
     useEffect(() => {
         fetchData();
     }, []);
@@ -158,6 +177,111 @@ export default function ManageBuildingsPage() {
         }
     };
 
+    const handleCreateBulkRooms = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedBuildingId) return;
+
+        setProcessing(true);
+        try {
+            const targetBuilding = buildings.find(b => b.id === selectedBuildingId);
+            if (!targetBuilding) throw new Error("Building not found.");
+
+            const existingRoomNumbers = new Set((targetBuilding.rooms || []).map(r => r.room_number));
+            const newRooms = [];
+
+            for (let f = bulkForm.start_floor; f <= bulkForm.end_floor; f++) {
+                for (let r = 1; r <= bulkForm.rooms_per_floor; r++) {
+                    const roomNum = `${f}${String(r).padStart(2, '0')}`;
+                    if (!existingRoomNumbers.has(roomNum)) {
+                        newRooms.push({
+                            building_id: selectedBuildingId,
+                            room_number: roomNum,
+                            floor: f,
+                            rent_price: bulkForm.rent_price,
+                            pet_status: bulkForm.pet_status,
+                            water_unit: 0,
+                            elec_unit: 0,
+                            status: 'Available',
+                            current_residents: 0
+                        });
+                    }
+                }
+            }
+
+            if (newRooms.length === 0) {
+                alert('No new rooms to generate. All numbered rooms may already exist in this range.');
+                return;
+            }
+
+            const { error } = await supabase.from('room').insert(newRooms);
+            if (error) throw error;
+            
+            alert(`Successfully generated ${newRooms.length} rooms!`);
+            setShowRoomModal(false);
+            setBulkForm({ start_floor: 1, end_floor: 1, rooms_per_floor: 10, rent_price: 5000, pet_status: false });
+            fetchData();
+        } catch (err: any) {
+            console.error('Error in bulk creation:', err);
+            alert('Error generating rooms: ' + err.message);
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    const fetchRoomDetails = async (room: Room) => {
+        setSelectedRoom(room);
+        setEditRoomForm({
+            rent_price: room.rent_price,
+            pet_status: room.pet_status
+        });
+        setCurrentTenant(null);
+        setShowEditRoomModal(true);
+
+        if (['Occupied', 'occupied'].includes(room.status)) {
+            try {
+                const { data, error } = await supabase
+                    .from('contract')
+                    .select('*, users (full_name, phone, profile_picture)')
+                    .eq('room_id', room.id)
+                    .in('status', ['Active', 'active', 'complete'])
+                    .single();
+                
+                if (error && error.code !== 'PGRST116') {
+                    console.error('Error fetching tenant:', error);
+                } else if (data) {
+                    setCurrentTenant(data);
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+    };
+
+    const handleUpdateRoom = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedRoom) return;
+        setProcessing(true);
+        try {
+            const { error } = await supabase
+                .from('room')
+                .update({ 
+                    rent_price: editRoomForm.rent_price, 
+                    pet_status: editRoomForm.pet_status 
+                })
+                .eq('id', selectedRoom.id);
+            
+            if (error) throw error;
+            alert('Room details updated successfully!');
+            setShowEditRoomModal(false);
+            fetchData();
+        } catch (err: any) {
+            console.error('Error updating room:', err);
+            alert('Error updating room: ' + err.message);
+        } finally {
+            setProcessing(false);
+        }
+    };
+
     return (
         <div className="h-full flex flex-col gap-6">
             {/* Header */}
@@ -205,6 +329,7 @@ export default function ManageBuildingsPage() {
                                 <button
                                     onClick={() => {
                                         setSelectedBuildingId(building.id);
+                                        setBulkForm(prev => ({ ...prev, end_floor: building.total_floor || 1 }));
                                         setShowRoomModal(true);
                                     }}
                                     className="bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors"
@@ -219,7 +344,11 @@ export default function ManageBuildingsPage() {
                                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                                         {/* Sort rooms by floor then number */}
                                         {building.rooms.sort((a,b) => a.floor - b.floor || a.room_number.localeCompare(b.room_number)).map(room => (
-                                            <div key={room.id} className={`border rounded-xl p-4 flex flex-col items-center justify-center text-center relative transition-all hover:shadow-md cursor-pointer group ${getRoomCardStyle(room.status)}`}>
+                                            <div 
+                                                key={room.id} 
+                                                onClick={() => fetchRoomDetails(room)}
+                                                className={`border rounded-xl p-4 flex flex-col items-center justify-center text-center relative transition-all hover:shadow-md cursor-pointer group ${getRoomCardStyle(room.status)}`}
+                                            >
                                                 {room.pet_status && (
                                                     <div className="absolute top-2 right-2 text-amber-600 bg-white/80 backdrop-blur-sm p-1 rounded-full shadow-sm" title="Pet Friendly">
                                                         <PawPrint size={14} />
@@ -304,64 +433,141 @@ export default function ManageBuildingsPage() {
             )}
 
             {/* Add Room Modal */}
+            {/* code is unchanged, we just append to the end of the file container */}
             {showRoomModal && selectedBuildingId && (
                 <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden flex flex-col">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                                 <DoorOpen size={20} className="text-indigo-600" />
-                                Add New Room
+                                {createMode === 'single' ? 'Add New Room' : 'Bulk Generate Rooms'}
                             </h2>
                         </div>
+                        
+                        {/* TABS */}
+                        <div className="flex border-b border-slate-200 bg-slate-50/50">
+                            <button 
+                                onClick={() => setCreateMode('single')}
+                                className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${createMode === 'single' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Single Room
+                            </button>
+                            <button 
+                                onClick={() => setCreateMode('bulk')}
+                                className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${createMode === 'bulk' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Bulk Generate
+                            </button>
+                        </div>
+
                         <div className="p-6">
-                            <form id="room-form" onSubmit={handleCreateRoom} className="space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-1">Room Number</label>
-                                        <input 
-                                            type="text" required 
-                                            className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
-                                            value={roomForm.room_number}
-                                            onChange={e => setRoomForm({...roomForm, room_number: e.target.value})}
-                                            placeholder="e.g. 101"
-                                        />
+                            {createMode === 'single' ? (
+                                <form id="room-form" onSubmit={handleCreateRoom} className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">Room Number</label>
+                                            <input 
+                                                type="text" required 
+                                                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
+                                                value={roomForm.room_number}
+                                                onChange={e => setRoomForm({...roomForm, room_number: e.target.value})}
+                                                placeholder="e.g. 101"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">Floor</label>
+                                            <input 
+                                                type="number" required min="1"
+                                                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
+                                                value={roomForm.floor}
+                                                onChange={e => setRoomForm({...roomForm, floor: Number(e.target.value)})}
+                                            />
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-1">Floor</label>
-                                        <input 
-                                            type="number" required min="1"
-                                            className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
-                                            value={roomForm.floor}
-                                            onChange={e => setRoomForm({...roomForm, floor: Number(e.target.value)})}
-                                        />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">Rent Price (฿)</label>
+                                            <input 
+                                                type="number" required min="0" step="100"
+                                                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
+                                                value={roomForm.rent_price}
+                                                onChange={e => setRoomForm({...roomForm, rent_price: Number(e.target.value)})}
+                                            />
+                                        </div>
+                                        <div className="flex flex-col justify-end">
+                                            <label className="flex items-center gap-3 cursor-pointer p-2 border border-slate-200 rounded-lg hover:bg-slate-50">
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="w-5 h-5 text-indigo-600 rounded"
+                                                    checked={roomForm.pet_status}
+                                                    onChange={e => setRoomForm({...roomForm, pet_status: e.target.checked})}
+                                                />
+                                                <span className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                                                    <PawPrint size={14} className="text-amber-500"/>
+                                                    Pet Friendly
+                                                </span>
+                                            </label>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-1">Rent Price (฿)</label>
-                                        <input 
-                                            type="number" required min="0" step="100"
-                                            className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
-                                            value={roomForm.rent_price}
-                                            onChange={e => setRoomForm({...roomForm, rent_price: Number(e.target.value)})}
-                                        />
+                                </form>
+                            ) : (
+                                <form id="bulk-room-form" onSubmit={handleCreateBulkRooms} className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">From Floor</label>
+                                            <input 
+                                                type="number" required min="1" 
+                                                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
+                                                value={bulkForm.start_floor}
+                                                onChange={e => setBulkForm({...bulkForm, start_floor: Number(e.target.value)})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">To Floor</label>
+                                            <input 
+                                                type="number" required min="1"
+                                                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
+                                                value={bulkForm.end_floor}
+                                                onChange={e => setBulkForm({...bulkForm, end_floor: Number(e.target.value)})}
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="flex flex-col justify-end">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">Rooms per Floor</label>
+                                            <input 
+                                                type="number" required min="1"
+                                                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
+                                                value={bulkForm.rooms_per_floor}
+                                                onChange={e => setBulkForm({...bulkForm, rooms_per_floor: Number(e.target.value)})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-1">Rent Price (฿)</label>
+                                            <input 
+                                                type="number" required min="0" step="100"
+                                                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
+                                                value={bulkForm.rent_price}
+                                                onChange={e => setBulkForm({...bulkForm, rent_price: Number(e.target.value)})}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col justify-end mt-2">
                                         <label className="flex items-center gap-3 cursor-pointer p-2 border border-slate-200 rounded-lg hover:bg-slate-50">
                                             <input 
                                                 type="checkbox" 
                                                 className="w-5 h-5 text-indigo-600 rounded"
-                                                checked={roomForm.pet_status}
-                                                onChange={e => setRoomForm({...roomForm, pet_status: e.target.checked})}
+                                                checked={bulkForm.pet_status}
+                                                onChange={e => setBulkForm({...bulkForm, pet_status: e.target.checked})}
                                             />
                                             <span className="text-sm font-bold text-slate-700 flex items-center gap-1">
                                                 <PawPrint size={14} className="text-amber-500"/>
-                                                Pet Friendly
+                                                Pet Friendly (All generated)
                                             </span>
                                         </label>
                                     </div>
-                                </div>
-                            </form>
+                                </form>
+                            )}
                         </div>
                         <div className="px-6 py-4 border-t border-slate-100 flex gap-3 bg-slate-50">
                             <button
@@ -371,10 +577,114 @@ export default function ManageBuildingsPage() {
                                 Cancel
                             </button>
                             <button
-                                type="submit" form="room-form" disabled={processing}
+                                type="submit" form={createMode === 'single' ? "room-form" : "bulk-room-form"} disabled={processing}
                                 className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700"
                             >
-                                {processing ? 'Creating...' : 'Create Room'}
+                                {processing ? 'Processing...' : (createMode === 'single' ? 'Create Single' : 'Generate All')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Room Details Modal */}
+            {showEditRoomModal && selectedRoom && (
+                <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden flex flex-col">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <DoorOpen size={20} className="text-indigo-600" />
+                                Room {selectedRoom.room_number}
+                            </h2>
+                            <div className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm ${getRoomBadgeStyle(selectedRoom.status)}`}>
+                                {selectedRoom.status}
+                            </div>
+                        </div>
+                        
+                        <div className="p-6 space-y-6">
+                            {/* Information Section */}
+                            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Tenant Information</h3>
+                                {['Occupied', 'occupied'].includes(selectedRoom.status) ? (
+                                    currentTenant ? (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center overflow-hidden border border-indigo-200 shadow-sm shrink-0">
+                                                    {currentTenant.users?.profile_picture ? (
+                                                        <img 
+                                                            src={currentTenant.users.profile_picture} 
+                                                            alt={currentTenant.users.full_name || 'Tenant'} 
+                                                            className="w-full h-full object-cover"
+                                                            onError={(e) => {
+                                                                // Fallback if image fails to load
+                                                                e.currentTarget.style.display = 'none';
+                                                                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                                            }}
+                                                        />
+                                                    ) : null}
+                                                    <span className={`text-indigo-700 font-bold ${currentTenant.users?.profile_picture ? 'hidden' : ''}`}>
+                                                        {(currentTenant.users?.full_name?.[0] || '?')}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-800 text-sm leading-tight">{currentTenant.users?.full_name || 'Unknown User'}</p>
+                                                    <p className="text-xs text-slate-500 mt-0.5">{currentTenant.users?.phone || 'No phone number'}</p>
+                                                </div>
+                                            </div>
+                                            <div className="pt-2 mt-2 border-t border-slate-200 text-xs text-slate-500">
+                                                <span className="font-bold text-slate-700">Contract:</span> {currentTenant.move_in || '-'} to {currentTenant.move_out || 'Active'}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-center space-x-2 py-2">
+                                            <div className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-indigo-600 animate-spin"></div>
+                                            <p className="text-xs font-bold text-slate-500">Loading details...</p>
+                                        </div>
+                                    )
+                                ) : (
+                                    <p className="text-sm font-medium text-slate-500 italic text-center py-2">Room is currently {selectedRoom.status.toLowerCase()}.</p>
+                                )}
+                            </div>
+
+                            {/* Edit Form */}
+                            <form id="edit-room-form" onSubmit={handleUpdateRoom} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Base Rent Price (฿)</label>
+                                    <input 
+                                        type="number" required min="0" step="100"
+                                        className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2 font-medium"
+                                        value={editRoomForm.rent_price}
+                                        onChange={e => setEditRoomForm({...editRoomForm, rent_price: Number(e.target.value)})}
+                                    />
+                                    <p className="text-[10px] text-slate-400 font-medium italic mt-1.5">* Modifying rent only affects future contracts</p>
+                                </div>
+                                <label className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors">
+                                    <span className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                        <PawPrint size={16} className={editRoomForm.pet_status ? "text-amber-500" : "text-slate-400"}/>
+                                        Pet Friendly
+                                    </span>
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-5 h-5 text-indigo-600 rounded cursor-pointer"
+                                        checked={editRoomForm.pet_status}
+                                        onChange={e => setEditRoomForm({...editRoomForm, pet_status: e.target.checked})}
+                                    />
+                                </label>
+                            </form>
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-slate-100 flex gap-3 bg-slate-50">
+                            <button
+                                onClick={() => setShowEditRoomModal(false)}
+                                className="flex-1 px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-xl font-bold hover:bg-slate-100 transition-colors"
+                            >
+                                Close
+                            </button>
+                            <button
+                                type="submit" form="edit-room-form" disabled={processing}
+                                className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors"
+                            >
+                                {processing ? 'Saving...' : 'Save Changes'}
                             </button>
                         </div>
                     </div>

@@ -410,7 +410,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                             {items.map((item, idx) => (
                                 <div key={idx} className="grid grid-cols-12 gap-2 font-light text-sm items-center">
                                     <div className="col-span-5 truncate font-medium">{item.label}</div>
-                                    <div className="col-span-2 text-center bg-white/10 rounded px-1 text-xs py-0.5">{Number.isInteger(item.unit) ? item.unit : item.unit.toFixed(1)}</div>
+                                    <div className="col-span-2 text-center bg-white/10 rounded px-1 text-xs py-0.5">{Number.isInteger(item.unit) ? item.unit : parseFloat(item.unit.toFixed(3))}</div>
                                     <div className="col-span-2 text-right opacity-80 text-xs">{item.price.toLocaleString()}</div>
                                     <div className="col-span-3 text-right font-bold">{item.amount.toLocaleString()}</div>
                                 </div>

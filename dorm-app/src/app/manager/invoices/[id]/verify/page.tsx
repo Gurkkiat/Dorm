@@ -199,7 +199,7 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
                     {items.map((item, idx) => (
                         <div key={idx} className="flex justify-between py-1 text-sm">
                             <span className="w-1/2">{item.label}</span>
-                            <span className="w-1/6 text-center">{Number.isInteger(item.unit) ? item.unit : item.unit.toFixed(1)}</span>
+                            <span className="w-1/6 text-center">{Number.isInteger(item.unit) ? item.unit : parseFloat(item.unit.toFixed(3))}</span>
                             <span className="w-1/6 text-right">{item.price.toLocaleString()}</span>
                             <span className="w-1/6 text-right font-bold">{item.amount.toLocaleString()}</span>
                         </div>
@@ -222,7 +222,7 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
                             <p className="text-sm">This invoice has been verified.</p>
                         </div>
                     ) : invoice.status?.toLowerCase() === 'unpaid' ? (
-                        <div className="mb-6 p-4 bg-yellow-500/20 text-yellow-800 rounded-lg border border-yellow-500/30">
+                        <div className="mb-6 p-4 bg-yellow-500/20 text-white rounded-lg border border-yellow-500/30">
                             <h3 className="text-xl font-bold mb-2">Waiting for Payment</h3>
                             <p className="text-sm">The tenant has not uploaded a payment slip yet.</p>
                             <p className="text-xs opacity-70 mt-1">(Actions will appear here once a slip is uploaded)</p>

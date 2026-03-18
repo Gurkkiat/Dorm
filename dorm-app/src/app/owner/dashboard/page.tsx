@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { TrendingUp, Users, Home, Wrench, DollarSign, Calendar, Filter } from 'lucide-react';
+import TopStatsCards from './components/TopStatsCards';
+import DashboardFilterBar from './components/DashboardFilterBar';
+import RevenueChart from './components/RevenueChart';
+import OccupancyChart from './components/OccupancyChart';
+import RoomStatusTable from './components/RoomStatusTable';
+import PaymentTracking from './components/PaymentTracking';
+import MaintenanceList from './components/MaintenanceList';
+import NotificationPanel, { NotificationItem } from './components/NotificationPanel';
+import OverdueTenants from './components/OverdueTenants';
 
 export default function OwnerDashboardPage() {
     const [loading, setLoading] = useState(true);
@@ -16,10 +24,18 @@ export default function OwnerDashboardPage() {
         totalRooms: 0,
         monthlyRevenue: [] as { month: string, amount: number }[]
     });
+    
+    // Filters
     const [selectedBuilding, setSelectedBuilding] = useState('All');
     const [selectedMonth, setSelectedMonth] = useState('All');
     const [selectedYear, setSelectedYear] = useState('All');
     const [buildingsList, setBuildingsList] = useState<{id: number, name_building: string}[]>([]);
+
+    // Component Data
+    const [roomsList, setRoomsList] = useState<any[]>([]);
+    const [invoicesList, setInvoicesList] = useState<any[]>([]);
+    const [maintenanceList, setMaintenanceList] = useState<any[]>([]);
+    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
     useEffect(() => {
         fetchDashboardData();
@@ -42,48 +58,80 @@ export default function OwnerDashboardPage() {
             // 1. Fetch Occupancy & Room Stats
             let roomQuery = supabase
                 .from('room')
-                .select('id, building!inner(branch_id)');
+                .select('id, status, room_number, building!inner(branch_id, name_building)');
             if (branchId) roomQuery = roomQuery.eq('building.branch_id', branchId);
             if (selectedBuilding !== 'All') roomQuery = roomQuery.eq('building.id', Number(selectedBuilding));
             const { data: rooms } = await roomQuery;
+            
             const totalRooms = rooms?.length || 0;
 
-            // 2. Fetch Active Tenants (Filter by Date overlap)
+            // 2. Fetch Active Tenants & Calculate Occupancy Rate
             let tenantQuery = supabase
                 .from('contract')
-                .select('id, status, move_in, move_out, room!inner(building!inner(branch_id, id))');
+                .select('id, status, move_in, move_out, room!inner(id, building!inner(branch_id, id))');
             if (branchId) tenantQuery = tenantQuery.eq('room.building.branch_id', branchId);
             if (selectedBuilding !== 'All') tenantQuery = tenantQuery.eq('room.building.id', Number(selectedBuilding));
             const { data: tenantData } = await tenantQuery;
 
-            let tenantCount = 0;
             const contracts = tenantData || [];
-            if (selectedYear === 'All' && selectedMonth === 'All') {
-                tenantCount = contracts.filter(c => ['Active', 'active', 'complete'].includes(c.status)).length;
-            } else {
-                const y = selectedYear !== 'All' ? selectedYear : new Date().getFullYear().toString();
-                const mPadded = selectedMonth !== 'All' ? '-' + selectedMonth.padStart(2, '0') + '-' : '';
+            
+            // Determine the "Snapshot Date" for assessing who was living there.
+            // For 'All', we use Today. For a specific year, we use End of Year (or Today if the year is the current year).
+            let snapshotDate = new Date().toISOString().split('T')[0]; 
+            if (selectedYear !== 'All') {
+                const y = selectedYear;
+                if (selectedMonth !== 'All') {
+                    // Next month day 0 gets the last day of the current month
+                    const nextMonth = new Date(Number(y), Number(selectedMonth), 0);
+                    const mStr = String(nextMonth.getMonth() + 1).padStart(2, '0');
+                    const dStr = String(nextMonth.getDate()).padStart(2, '0');
+                    snapshotDate = `${y}-${mStr}-${dStr}`;
+                } else {
+                    snapshotDate = `${y}-12-31`;
+                }
                 
-                tenantCount = contracts.filter(c => {
-                    const isActiveNow = ['Active', 'active', 'complete'].includes(c.status);
-                    if (isActiveNow) {
-                        if (!c.move_in) return true;
-                        const periodEnd = mPadded ? `${y}${mPadded}31` : `${y}-12-31`;
-                        return c.move_in <= periodEnd;
-                    } else {
-                        if (!c.move_in || !c.move_out) return false;
-                        const periodStart = mPadded ? `${y}${mPadded}01` : `${y}-01-01`;
-                        const periodEnd = mPadded ? `${y}${mPadded}31` : `${y}-12-31`;
-                        return c.move_in <= periodEnd && c.move_out >= periodStart;
-                    }
-                }).length;
+                // If the computed snapshot is in the future, fallback to today's date for realism.
+                const today = new Date().toISOString().split('T')[0];
+                if (snapshotDate > today) snapshotDate = today;
             }
+
+            const occupiedRooms = new Set();
+            contracts.forEach((c: any) => {
+                const moveIn = c.move_in || '2000-01-01';
+                const isActiveNow = ['Active', 'active', 'complete'].includes(c.status);
+                // If active, they represent an open-ended stay in the future
+                const moveOut = isActiveNow ? '2100-12-31' : (c.move_out || moveIn);
+                
+                // Was the contract active precisely on this snapshot date?
+                if (moveIn <= snapshotDate && moveOut >= snapshotDate) {
+                    occupiedRooms.add(c.room.id);
+                }
+            });
+            
+            const tenantCount = occupiedRooms.size;
             const occupancyRate = totalRooms > 0 ? Math.round((tenantCount / totalRooms) * 100) : 0;
+
+            const mappedRooms = (rooms || []).map((r: any) => {
+                let dynamicStatus = r.status;
+                if (occupiedRooms.has(r.id)) {
+                    dynamicStatus = 'Occupied';
+                } else if (['Occupied', 'occupied'].includes(r.status)) {
+                    dynamicStatus = 'Available';
+                }
+                return {
+                    id: r.id, 
+                    room_number: r.room_number,
+                    status: dynamicStatus,
+                    buildingName: r.building.name_building
+                };
+            });
+            setRoomsList(mappedRooms);
 
             // 3. Fetch Pending Maintenance (Filter by Date)
             let maintQuery = supabase
                 .from('maintenance_request')
-                .select('id, requested_at, status_technician, room!inner(building!inner(branch_id, id))');
+                .select('id, issue_description, requested_at, status_technician, room!inner(room_number, building!inner(branch_id, id))')
+                .order('requested_at', { ascending: false });
             if (branchId) maintQuery = maintQuery.eq('room.building.branch_id', branchId);
             if (selectedBuilding !== 'All') maintQuery = maintQuery.eq('room.building.id', Number(selectedBuilding));
             const { data: maintData } = await maintQuery;
@@ -97,24 +145,46 @@ export default function OwnerDashboardPage() {
                 filteredMaint = filteredMaint.filter(req => req.requested_at && req.requested_at.includes(monthPadded));
             }
             const maintCount = filteredMaint.filter(req => req.status_technician === 'Pending').length;
+            
+            const mappedMaint = filteredMaint.map((m: any) => ({
+                id: m.id,
+                issue_description: m.issue_description,
+                status_technician: m.status_technician,
+                requested_at: m.requested_at,
+                room_number: m.room.room_number
+            }));
+            setMaintenanceList(mappedMaint);
 
             // 4. Fetch Revenue Data
             let invoiceQuery = supabase
                 .from('invoice')
-                .select('room_total_cost, bill_date, status, contract!inner(room!inner(building!inner(branch_id, id)))');
+                .select('id, room_total_cost, bill_date, due_date, status, contract!inner(room!inner(room_number, building!inner(branch_id, id)), users(full_name, phone))')
+                .order('bill_date', { ascending: false });
             if (branchId) invoiceQuery = invoiceQuery.eq('contract.room.building.branch_id', branchId);
             if (selectedBuilding !== 'All') invoiceQuery = invoiceQuery.eq('contract.room.building.id', Number(selectedBuilding));
             const { data: invoices } = await invoiceQuery;
 
-            // Apply Date Filters ONLY to Total Revenue (Charts remain last 6 months)
+            // Apply Date Filters
             let filteredInvoices = invoices || [];
             if (selectedYear !== 'All') {
                 filteredInvoices = filteredInvoices.filter(inv => inv.bill_date && inv.bill_date.startsWith(selectedYear));
             }
             if (selectedMonth !== 'All') {
-                const monthPadded = '-' + selectedMonth.padStart(2, '0') + '-'; // Match '-03-' format
+                const monthPadded = '-' + selectedMonth.padStart(2, '0') + '-';
                 filteredInvoices = filteredInvoices.filter(inv => inv.bill_date && inv.bill_date.includes(monthPadded));
             }
+
+            const mappedInvoices = filteredInvoices.map((i: any) => ({
+                id: i.id,
+                room_total_cost: i.room_total_cost,
+                status: i.status || 'Paid',
+                bill_date: i.bill_date,
+                due_date: i.due_date,
+                room_number: i.contract?.room?.room_number || '-',
+                tenant_name: i.contract?.users?.full_name || 'No tenant associated',
+                tenant_phone: i.contract?.users?.phone || '-'
+            }));
+            setInvoicesList(mappedInvoices);
 
             const totalBilled = filteredInvoices.reduce((sum, inv) => sum + (inv.room_total_cost || 0), 0) || 0;
             const pendingAmount = filteredInvoices.filter(inv => inv.status?.toLowerCase() !== 'paid').reduce((sum, inv) => sum + (inv.room_total_cost || 0), 0) || 0;
@@ -169,6 +239,29 @@ export default function OwnerDashboardPage() {
                 monthlyRevenue: chartData
             });
 
+            // Generate Notifications
+            const newNotifs: NotificationItem[] = [];
+            mappedInvoices.filter((i:any) => i.status.toLowerCase() !== 'paid').forEach((inv: any) => {
+                newNotifs.push({
+                    id: `inv-${inv.id}`,
+                    type: inv.status.toLowerCase() === 'overdue' ? 'alert' : 'warning',
+                    title: `Payment ${inv.status}`,
+                    message: `Room ${inv.room_number} has an unpaid invoice of ฿${inv.room_total_cost.toLocaleString()}.`,
+                    date: inv.bill_date
+                });
+            });
+            mappedMaint.filter((m:any) => m.status_technician === 'Pending').forEach((req: any) => {
+                newNotifs.push({
+                    id: `maint-${req.id}`,
+                    type: 'alert',
+                    title: `New Maintenance Request`,
+                    message: `Room ${req.room_number} reported an issue: ${req.issue_description}`,
+                    date: req.requested_at
+                });
+            });
+            newNotifs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            setNotifications(newNotifs);
+
         } catch (error) {
             console.error('Error fetching dashboard data:', error);
         } finally {
@@ -176,231 +269,59 @@ export default function OwnerDashboardPage() {
         }
     };
 
-    if (loading) return <div className="p-8 text-center text-slate-500">Loading Dashboard Statistics...</div>;
-
-    const maxMonthlyRevenue = Math.max(...stats.monthlyRevenue.map(m => m.amount), 1000);
+    if (loading) return <div className="p-8 text-center text-slate-500 font-bold tracking-widest uppercase">Initializing Layout...</div>;
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 pb-12">
             {/* Header */}
             <div>
-                <h1 className="text-3xl font-bold text-slate-800">Branch Performance Overview</h1>
-                <p className="text-slate-500 mt-1">Real-time data and growth analysis</p>
+                <h1 className="text-3xl font-black text-slate-800 tracking-tight">Executive Dashboard</h1>
+                <p className="text-slate-500 mt-1 font-medium">Real-time building oversight and financial analytics</p>
             </div>
 
-            {/* Filter Bar */}
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-center">
-                <div className="flex items-center gap-2 text-slate-500 font-bold mr-2">
-                    <Filter size={18} />
-                    <span>Filters:</span>
-                </div>
+            {/* Global Filter Bar */}
+            <DashboardFilterBar 
+                selectedBuilding={selectedBuilding} setSelectedBuilding={setSelectedBuilding}
+                selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
+                selectedYear={selectedYear} setSelectedYear={setSelectedYear}
+                buildingsList={buildingsList}
+            />
+
+            {/* Top Summaries */}
+            <TopStatsCards stats={stats} />
+
+            {/* Main Visualizations Grid */}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                 
-                <select 
-                    value={selectedBuilding} 
-                    onChange={e => setSelectedBuilding(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                    <option value="All">All Buildings</option>
-                    {buildingsList.map(b => (
-                        <option key={b.id} value={b.id.toString()}>{b.name_building}</option>
-                    ))}
-                </select>
-
-                <select 
-                    value={selectedMonth} 
-                    onChange={e => setSelectedMonth(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                    <option value="All">All Months (Revenue)</option>
-                    <option value="1">January</option>
-                    <option value="2">February</option>
-                    <option value="3">March</option>
-                    <option value="4">April</option>
-                    <option value="5">May</option>
-                    <option value="6">June</option>
-                    <option value="7">July</option>
-                    <option value="8">August</option>
-                    <option value="9">September</option>
-                    <option value="10">October</option>
-                    <option value="11">November</option>
-                    <option value="12">December</option>
-                </select>
-
-                <select 
-                    value={selectedYear} 
-                    onChange={e => setSelectedYear(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                    <option value="All">All Years (Revenue)</option>
-                    <option value="2023">2023</option>
-                    <option value="2024">2024</option>
-                    <option value="2025">2025</option>
-                    <option value="2026">2026</option>
-                </select>
-            </div>
-
-            {/* Top Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-                    <div className="flex items-center gap-4 mb-4">
-                        <div className="bg-emerald-50 text-emerald-600 p-3 rounded-xl">
-                            <DollarSign size={24} />
-                        </div>
-                        <div>
-                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Revenue</p>
-                            <h3 className="text-2xl font-black text-slate-800 tracking-tight">฿{stats.totalRevenue.toLocaleString()}</h3>
-                        </div>
-                    </div>
-                    <div className="flex justify-between items-center text-xs border-t border-slate-50 pt-3">
-                        <div className="flex flex-col">
-                            <span className="text-slate-400">Total Billed</span>
-                            <span className="font-bold text-slate-600">฿{stats.totalBilled.toLocaleString()}</span>
-                        </div>
-                        <span className="text-slate-300">-</span>
-                        <div className="flex flex-col text-right">
-                            <span className="text-slate-400">Pending Amount</span>
-                            <span className="font-bold text-amber-500">฿{stats.pendingAmount.toLocaleString()}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
-                    <div className="bg-blue-50 text-blue-600 p-3 rounded-xl">
-                        <Home size={24} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Occupancy Rate</p>
-                        <h3 className="text-2xl font-black text-slate-800 tracking-tight">{stats.occupancyRate}%</h3>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
-                    <div className="bg-indigo-50 text-indigo-600 p-3 rounded-xl">
-                        <Users size={24} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Active Tenants</p>
-                        <h3 className="text-2xl font-black text-slate-800 tracking-tight">{stats.activeTenants}</h3>
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
-                    <div className="bg-amber-50 text-amber-600 p-3 rounded-xl">
-                        <Wrench size={24} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pending Repairs</p>
-                        <h3 className="text-2xl font-black text-slate-800 tracking-tight">{stats.pendingMaintenance}</h3>
-                    </div>
-                </div>
-            </div>
-
-            {/* Charts Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                
-                {/* Revenue Bar Chart (Custom CSS) */}
-                <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col">
-                    <div className="flex justify-between items-center mb-10">
-                        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                            <TrendingUp size={20} className="text-indigo-600" />
-                            Revenue Trends
-                        </h2>
-                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1 rounded-full">
-                            {selectedYear !== 'All' ? `Year: ${selectedYear}` : 'Last 6 Months'}
-                        </span>
-                    </div>
+                {/* Left/Main Column - Financials & Operations */}
+                <div className="xl:col-span-2 space-y-8 flex flex-col">
+                    {/* Revenue Trends */}
+                    <RevenueChart monthlyRevenue={stats.monthlyRevenue} selectedYear={selectedYear} />
                     
-                    <div className="flex-1 flex items-end justify-between gap-4 h-64 px-4 pb-8 border-b border-slate-100">
-                        {stats.monthlyRevenue.map((data, idx) => (
-                            <div key={idx} className="flex-1 flex flex-col items-center group relative">
-                                {/* Tooltip */}
-                                <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-indigo-900 text-white text-[10px] py-1 px-2 rounded font-bold pointer-events-none whitespace-nowrap z-10">
-                                    ฿{data.amount.toLocaleString()}
-                                </div>
-                                
-                                <div 
-                                    style={{ height: `${(data.amount / maxMonthlyRevenue) * 100}%` }}
-                                    className="w-full max-w-[40px] bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t-lg transition-all duration-500 group-hover:shadow-[0_0_20px_rgba(79,70,229,0.3)] group-hover:scale-x-105 origin-bottom"
-                                ></div>
-                                <span className="absolute -bottom-8 text-xs font-bold text-slate-500">{data.month}</span>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="mt-12 flex justify-between text-xs text-slate-400 font-medium italic">
-                        <p>Showing growth based on paid invoices per month.</p>
-                        <p>Max: ฿{maxMonthlyRevenue.toLocaleString()}</p>
+                    {/* Tables Row */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                        <PaymentTracking invoices={invoicesList} />
+                        <MaintenanceList requests={maintenanceList} />
                     </div>
                 </div>
 
-                {/* Occupancy Ring (Custom SVG) */}
-                <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col items-center">
-                    <div className="w-full flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                            <Calendar size={20} className="text-blue-600" />
-                            Occupancy Analysis
-                        </h2>
+                {/* Right Column - Room Context & Alerts */}
+                <div className="space-y-8 flex flex-col">
+                    {/* Occupancy Analysis */}
+                    <OccupancyChart occupancyRate={stats.occupancyRate} activeTenants={stats.activeTenants} totalRooms={stats.totalRooms} />
+                    
+                    {/* Critical Overdue Action Cards (Only renders if there are overdue invoices) */}
+                    <OverdueTenants invoices={invoicesList} />
+
+                    <div className="max-h-[450px] flex flex-col">
+                        <NotificationPanel notifications={notifications} />
                     </div>
 
-                    <div className="flex flex-col items-center justify-center flex-1 relative">
-                        {/* Ring Chart CSS/SVG */}
-                        <div className="relative w-56 h-56 flex items-center justify-center">
-                            <svg className="w-full h-full -rotate-90">
-                                <circle 
-                                    cx="112" cy="112" r="90" 
-                                    fill="none" stroke="#f1f5f9" strokeWidth="24"
-                                />
-                                <circle 
-                                    cx="112" cy="112" r="90" 
-                                    fill="none" stroke="#3b82f6" strokeWidth="24"
-                                    strokeDasharray={2 * Math.PI * 90}
-                                    strokeDashoffset={(2 * Math.PI * 90) * (1 - stats.occupancyRate / 100)}
-                                    strokeLinecap="round"
-                                    className="transition-all duration-1000 ease-out"
-                                />
-                            </svg>
-                            <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                <span className="text-4xl font-black text-slate-800">{stats.occupancyRate}%</span>
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Occupied</span>
-                            </div>
-                        </div>
-
-                        {/* Legend */}
-                        <div className="grid grid-cols-2 gap-8 mt-10 w-full px-6">
-                            <div className="flex flex-col items-center">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                                    <span className="text-sm font-bold text-slate-700">{stats.activeTenants}</span>
-                                </div>
-                                <span className="text-[10px] text-slate-400 uppercase font-black tracking-tighter">Tenant Active</span>
-                            </div>
-                            <div className="flex flex-col items-center">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <div className="w-3 h-3 rounded-full bg-slate-200"></div>
-                                    <span className="text-sm font-bold text-slate-700">{stats.totalRooms - stats.activeTenants}</span>
-                                </div>
-                                <span className="text-[10px] text-slate-400 uppercase font-black tracking-tighter">Available Rooms</span>
-                            </div>
-                        </div>
+                    <div className="max-h-[450px] flex flex-col">
+                        <RoomStatusTable rooms={roomsList} />
                     </div>
                 </div>
-            </div>
 
-            {/* Detailed Row (Optional Placeholder) */}
-            <div className="bg-indigo-900 rounded-[2.5rem] p-10 text-white relative overflow-hidden shadow-2xl">
-                <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-                <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
-                    <div className="max-w-xl">
-                        <h2 className="text-3xl font-black mb-4">Branch Performance Insights</h2>
-                        <p className="text-indigo-200 leading-relaxed">
-                            Your current occupancy is at <span className="text-white font-bold">{stats.occupancyRate}%</span>. 
-                            To maximize revenue, consider targeting the remaining <span className="text-white font-bold">{stats.totalRooms - stats.activeTenants}</span> available rooms. 
-                            Monthly revenue is showing a <span className="text-emerald-400 font-bold">positive trend</span> based on historical data.
-                        </p>
-                    </div>
-                    <button onClick={() => fetchDashboardData()} className="bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black hover:bg-indigo-50 transition-all shadow-xl hover:-translate-y-1 active:translate-y-0">
-                        Refresh Report
-                    </button>
-                </div>
             </div>
         </div>
     );

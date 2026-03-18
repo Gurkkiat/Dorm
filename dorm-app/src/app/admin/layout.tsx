@@ -123,20 +123,28 @@ export default function AdminLayout({
                 </div>
 
                 {/* Branch Selector */}
-                <div className="px-4 py-3 border-b border-slate-700/60">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Branch Scope</p>
-                    <select
-                        value={selectedBranchId}
-                        onChange={e => setSelectedBranchId(e.target.value)}
-                        className="w-full bg-slate-800 border border-slate-600 text-sm text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-500"
-                    >
-                        <option value="all">🌐 All Branches</option>
-                        {branches.map(b => (
-                            <option key={b.id} value={String(b.id)}>
-                                {b.branches_name}
-                            </option>
-                        ))}
-                    </select>
+                <div className="px-5 py-5 border-b border-slate-700/60 bg-slate-900/40 relative overflow-hidden">
+                    <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent"></div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                        Branch Scope
+                    </p>
+                    <div className="relative group">
+                        <select
+                            value={selectedBranchId}
+                            onChange={e => setSelectedBranchId(e.target.value)}
+                            className="w-full appearance-none bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600/50 hover:border-blue-500/50 text-[13px] font-bold text-slate-100 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all cursor-pointer shadow-inner pr-10"
+                        >
+                            <option value="all">All Branches Overview</option>
+                            {branches.map(b => (
+                                <option key={b.id} value={String(b.id)} className="bg-slate-800 text-white p-2">
+                                    {b.branches_name} {b.city ? `(${b.city})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400 group-hover:text-blue-400 transition-colors">
+                            <ChevronDown size={14} strokeWidth={3} />
+                        </div>
+                    </div>
                 </div>
 
                 {/* Nav */}
@@ -210,7 +218,7 @@ export default function AdminLayout({
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 ml-64 p-8 overflow-y-auto">
+            <main key={selectedBranchId} className="flex-1 ml-64 p-8 overflow-y-auto">
                 {children}
             </main>
 

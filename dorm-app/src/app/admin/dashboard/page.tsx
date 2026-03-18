@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Building2, Users, DollarSign, Activity, Globe, Shield } from 'lucide-react';
+import InfrastructureHealth from './components/InfrastructureHealth';
 
 export default function AdminDashboardPage() {
     const [loading, setLoading] = useState(true);
@@ -64,9 +65,9 @@ export default function AdminDashboardPage() {
     };
 
     return (
-        <div className="space-y-8 h-full flex flex-col">
+        <div className="space-y-8 flex flex-col">
             {/* Hero Header */}
-            <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white relative overflow-hidden shadow-2xl">
+            <div className="shrink-0 bg-slate-900 rounded-[2.5rem] p-10 text-white relative overflow-hidden shadow-2xl">
                 <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
                 <div className="relative z-10">
                     <h1 className="text-4xl font-black mb-2">System Administration</h1>
@@ -129,24 +130,9 @@ export default function AdminDashboardPage() {
                 </div>
             </div>
 
-            {/* System Status Table Placeholder */}
-            <div className="flex-1 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                    <h2 className="flex items-center gap-2 font-bold text-slate-800">
-                        <Globe size={18} className="text-blue-500" />
-                        Infrastructure Health
-                    </h2>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-black uppercase tracking-widest">All Systems Operational</span>
-                </div>
-                <div className="flex-1 flex items-center justify-center p-12 text-center">
-                    <div className="max-w-md">
-                        <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <Activity size={32} />
-                        </div>
-                        <h3 className="text-lg font-bold text-slate-800 mb-2">Centralized Monitoring</h3>
-                        <p className="text-slate-500 text-sm">The administrative dashboard aggregates data from all branches across the system to give you a bird's eye view of the entire dormitory network.</p>
-                    </div>
-                </div>
+            {/* System Status Dynamic Health Check */}
+            <div className="flex-1 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
+                <InfrastructureHealth />
             </div>
         </div>
     );
