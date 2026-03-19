@@ -14,6 +14,7 @@ export default function TenantLayout({
     const pathname = usePathname();
     const router = useRouter();
     const [userName, setUserName] = useState('Tenant');
+    const [profilePic, setProfilePic] = useState<string | null>(null);
     const [branchInfo, setBranchInfo] = useState<{ city: string; name: string } | null>(null);
 
     useEffect(() => {
@@ -47,8 +48,19 @@ export default function TenantLayout({
                             });
                         }
                     }
+
+                    // Fetch Profile Picture
+                    const { data: userData } = await supabase
+                        .from('users')
+                        .select('profile_picture')
+                        .eq('id', storedUserId)
+                        .single();
+                    
+                    if (userData?.profile_picture) {
+                        setProfilePic(userData.profile_picture);
+                    }
                 } catch (err) {
-                    console.error('Error fetching branch info:', err);
+                    console.error('Error fetching tenant data:', err);
                 }
             }
         };
@@ -95,7 +107,7 @@ export default function TenantLayout({
                 <div className="border-b border-white/20 mx-6 mb-6" />
 
                 {/* Navigation */}
-                <nav className="flex-1 px-4 space-y-2">
+                <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto">
                     {navItems.map((item) => (
                         <Link key={item.name} href={item.href}>
                             <div
@@ -114,9 +126,13 @@ export default function TenantLayout({
                 {/* User Profile & Logout */}
                 <div className="p-4 bg-[#003380]">
                     <div className="flex items-center gap-3 mb-4 px-2 hover:bg-white/10 p-2 rounded-lg cursor-pointer transition-colors" onClick={() => router.push('/tenant/profile')}>
-                        <div className="bg-white rounded-full p-2">
-                            <User className="text-[#0047AB]" size={20} />
-                        </div>
+                        {profilePic ? (
+                            <img src={profilePic} alt="Profile" className="w-10 h-10 rounded-full object-cover border-2 border-white/20" />
+                        ) : (
+                            <div className="bg-white rounded-full p-2">
+                                <User className="text-[#0047AB]" size={20} />
+                            </div>
+                        )}
                         <div className="overflow-hidden flex-1">
                             <p className="font-bold truncate text-sm">{userName}</p>
                             <p className="text-xs text-white/70">Tenant</p>

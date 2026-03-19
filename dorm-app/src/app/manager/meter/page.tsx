@@ -295,7 +295,8 @@ export default function ManagerMeterPage() {
                             <tr>
                                 <th className="py-4 px-4 rounded-l-lg">Room / Building</th>
                                 <th className="py-4 px-4">Water Usage</th>
-                                <th className="py-4 px-4 rounded-r-lg">Electricity Usage</th>
+                                <th className="py-4 px-4">Electricity Usage</th>
+                                <th className="py-4 px-4 rounded-r-lg text-right">Total Cost</th>
                             </tr>
                         </thead>
                         <tbody className="text-sm divide-y divide-gray-50">
@@ -366,6 +367,16 @@ export default function ManagerMeterPage() {
                                                         = ฿ {elecCost.toLocaleString()}
                                                     </span>
                                                 </div>
+                                            </div>
+                                        </td>
+
+                                        {/* Total Cost Column */}
+                                        <td className="py-4 px-4 text-right">
+                                            <div className="flex flex-col items-end">
+                                                <p className="text-lg font-black text-slate-800">
+                                                    {(waterCost + elecCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </p>
+                                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">THB Total</p>
                                             </div>
                                         </td>
                                     </tr>

@@ -13,6 +13,7 @@ interface UserData {
     branch?: { branches_name: string };
     e_mail?: string;
     phone?: string;
+    profile_picture?: string | null;
 }
 
 interface Branch {
@@ -57,7 +58,7 @@ export default function AdminUsersPage() {
         try {
             const { data: userData } = await supabase
                 .from('users')
-                .select('id, username, full_name, role, branch_id, e_mail, phone, branch:branch_id(branches_name)')
+                .select('id, username, full_name, role, branch_id, e_mail, phone, profile_picture, branch:branch_id(branches_name)')
                 .order('id', { ascending: false });
 
             const { data: branchData } = await supabase
@@ -279,9 +280,13 @@ export default function AdminUsersPage() {
                                         <tr key={user.id} className="hover:bg-slate-50/70 transition-colors group">
                                             <td className="py-3.5 px-6">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-9 h-9 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center font-black text-sm shrink-0">
-                                                        {user.full_name?.charAt(0)?.toUpperCase() || '?'}
-                                                    </div>
+                                                    {user.profile_picture ? (
+                                                        <img src={user.profile_picture} alt={user.full_name} className="w-9 h-9 rounded-full object-cover shrink-0" />
+                                                    ) : (
+                                                        <div className="w-9 h-9 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center font-black text-sm shrink-0">
+                                                            {user.full_name?.charAt(0)?.toUpperCase() || '?'}
+                                                        </div>
+                                                    )}
                                                     <div>
                                                         <p className="font-bold text-slate-800">{user.full_name}</p>
                                                         <p className="text-xs text-slate-400 font-mono">@{user.username}</p>
