@@ -1,6 +1,6 @@
 'use client';
 
-import { Building2, LayoutGrid, DollarSign, Wrench, Gauge, Users, User, LogOut, UserCog, Bell } from 'lucide-react';
+import { Building2, LayoutGrid, DollarSign, Wrench, Gauge, Users, User, LogOut, UserCog, Bell, Receipt } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -108,6 +108,7 @@ function ManagerLayoutContent({
     const navItems = [
         { name: 'Dashboard', href: '/manager/dashboard', icon: LayoutGrid },
         { name: 'Payment', href: '/manager/payments', icon: DollarSign },
+        { name: 'Expenses', href: '/manager/expenses', icon: Receipt },
         { name: 'Maintenance', href: '/manager/maintenance', icon: Wrench },
         { name: 'Mechanics', href: '/manager/mechanics', icon: UserCog },
         { name: 'Meter', href: '/manager/meter', icon: Gauge },
@@ -155,7 +156,7 @@ function ManagerLayoutContent({
                     )}
                 </div>
 
-                <nav className="flex-1 px-4 py-6 space-y-2">
+                <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
                     {navItems.map((item) => {
                         const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
                         return (

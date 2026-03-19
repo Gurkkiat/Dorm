@@ -139,6 +139,15 @@ export interface MaintenanceTimeline {
     created_at: string;
 }
 
+export interface MaintenancePart {
+    id: number;
+    maintenance_id: number;
+    part_name: string;
+    price: number;
+    status: 'pending' | 'approved' | 'rejected';
+    created_at: string; // Timestamp string
+}
+
 export interface Equipment {
     id: number;
     room_id: number;
@@ -167,11 +176,14 @@ export interface Promotion {
 export interface Expenses {
     id: number;
     branch_id: number;
-    promotion_id: number;
+    building_id?: number | null; // Optional linking to specific building
+    promotion_id?: number | null;
     amount: number;
     category: string;
     note: string;
     paid_at: string; // Timestamp string
+    receipt_url?: string | null;
+    building?: { name_building: string }; // For join queries
 }
 
 export interface Income {

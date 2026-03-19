@@ -38,6 +38,7 @@ export default function AdminUsersPage() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterRole, setFilterRole] = useState('All');
+    const [tenantBranchMap, setTenantBranchMap] = useState<Record<number, string>>({});
 
     const [showModal, setShowModal] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -66,6 +67,26 @@ export default function AdminUsersPage() {
 
             setUsers((userData as unknown as UserData[]) || []);
             setBranches(branchData || []);
+
+            // For tenants without branch_id, look up branch via contract → room → building → branch
+            const tenants = ((userData as unknown as UserData[]) || []).filter(u => u.role?.toLowerCase() === 'tenant' && !u.branch_id);
+            if (tenants.length > 0) {
+                const tenantIds = tenants.map(t => t.id);
+                const { data: contracts } = await supabase
+                    .from('contract')
+                    .select('user_id, room:room_id(building:building_id(branch:branch_id(branches_name)))')
+                    .in('user_id', tenantIds)
+                    .in('status', ['active', 'Active', 'complete', 'Complete']);
+                
+                const map: Record<number, string> = {};
+                (contracts || []).forEach((c: any) => {
+                    const branchName = c.room?.building?.branch?.branches_name;
+                    if (branchName && c.user_id) {
+                        map[c.user_id] = branchName;
+                    }
+                });
+                setTenantBranchMap(map);
+            }
         } catch (err) {
             console.error('Error fetching data:', err);
         } finally {
@@ -106,13 +127,56 @@ export default function AdminUsersPage() {
     };
 
     const handleDeleteUser = async (user: UserData) => {
-        if (!confirm(`Delete user "${user.full_name}" (@${user.username})? This cannot be undone.`)) return;
+        if (!confirm(`Delete user "${user.full_name}" (@${user.username}) AND ALL THEIR HISTORY? This cannot be undone.`)) return;
+        
         try {
+            // 1. Get their contracts
+            const { data: contracts } = await supabase.from('contract').select('id').eq('user_id', user.id);
+            const contractIds = contracts?.map(c => c.id) || [];
+            
+            if (contractIds.length > 0) {
+                // 2. Get invoices to delete income records first (income references invoice)
+                const { data: invoices } = await supabase.from('invoice').select('id').in('contract_id', contractIds);
+                const invoiceIds = invoices?.map(i => i.id) || [];
+                
+                if (invoiceIds.length > 0) {
+                    // Delete income records that reference these invoices
+                    const { error: incErr } = await supabase.from('income').delete().in('invoice_id', invoiceIds);
+                    if (incErr) console.warn('income delete:', incErr.message);
+                }
+                
+                // 3. Delete invoices
+                const { error: invErr } = await supabase.from('invoice').delete().in('contract_id', contractIds);
+                if (invErr) throw new Error(`Failed to delete invoices: ${invErr.message}`);
+                
+                // 4. Delete meter readings
+                const { error: mErr } = await supabase.from('meter_reading').delete().in('contract_id', contractIds);
+                if (mErr) console.warn('meter_reading delete:', mErr.message);
+                
+                // 5. Delete log_monthly_room
+                const { error: lErr } = await supabase.from('log_monthly_room').delete().in('contract_id', contractIds);
+                if (lErr) console.warn('log_monthly_room delete:', lErr.message);
+                
+                // 6. Delete contracts
+                const { error: cErr } = await supabase.from('contract').delete().in('id', contractIds);
+                if (cErr) throw new Error(`Failed to delete contracts: ${cErr.message}`);
+            }
+            
+            // 7. For mechanics, unlink them from maintenance requests
+            if (user.role?.toLowerCase() === 'mechanic') {
+                await supabase.from('maintenance_request').update({ technician_id: null }).eq('technician_id', user.id);
+                await supabase.from('maintenance_timeline').update({ technician_id: null }).eq('technician_id', user.id);
+            }
+            
+            // 8. Finally, delete the user
             const { error } = await supabase.from('users').delete().eq('id', user.id);
-            if (error) throw error;
+            if (error) throw new Error(`Failed to delete user: ${error.message}`);
+            
             setUsers(prev => prev.filter(u => u.id !== user.id));
-        } catch (err) {
-            alert('Failed to delete user.');
+            alert('User and all associated history have been completely deleted.');
+        } catch (err: any) {
+            console.error('Delete error:', err);
+            alert(`Failed to delete user: ${err.message || 'Unknown error. Check console for details.'}`);
         }
     };
 
@@ -235,6 +299,11 @@ export default function AdminUsersPage() {
                                                     <span className="flex items-center gap-1.5 text-slate-600 text-xs font-medium">
                                                         <Building2 size={13} className="text-slate-400" />
                                                         {(user.branch as any).branches_name}
+                                                    </span>
+                                                ) : tenantBranchMap[user.id] ? (
+                                                    <span className="flex items-center gap-1.5 text-slate-600 text-xs font-medium">
+                                                        <Building2 size={13} className="text-slate-400" />
+                                                        {tenantBranchMap[user.id]}
                                                     </span>
                                                 ) : (
                                                     <span className="text-xs text-slate-300 italic">—</span>

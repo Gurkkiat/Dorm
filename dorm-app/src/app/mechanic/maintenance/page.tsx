@@ -6,7 +6,7 @@ import { MaintenanceRequest } from '@/types/database'; // Ensure types are updat
 import {
     Wrench, CheckCircle2, Clock,
     AlertCircle, Search, Filter,
-    MapPin, Calendar, Camera, Upload, X, Loader2, ChevronDown
+    MapPin, Calendar, Camera, Upload, X, Loader2, ChevronDown, Plus, Trash2
 } from 'lucide-react';
 import Image from 'next/image';
 import Loading from '@/components/ui/loading';
@@ -42,6 +42,9 @@ export default function MechanicMaintenancePage() {
     const [updateStatus, setUpdateStatus] = useState('');
     const [proofFile, setProofFile] = useState<File | null>(null);
     const [uploading, setUploading] = useState(false);
+    
+    // Parts Request State
+    const [parts, setParts] = useState<{name: string, price: string}[]>([]);
 
     useEffect(() => {
         const userId = localStorage.getItem('user_id');
@@ -197,11 +200,28 @@ export default function MechanicMaintenancePage() {
             console.error('Failed to update request status', updateError);
         }
 
+        // 3. Insert Parts if "Waiting for Parts" and parts exist
+        if (updateStatus === 'Waiting for Parts' && parts.length > 0) {
+            const partsPayload = parts.map(p => ({
+                maintenance_id: id,
+                part_name: p.name,
+                price: parseFloat(p.price) || 0,
+                status: 'pending'
+            }));
+            
+            const { error: partsError } = await supabase.from('maintenance_parts').insert(partsPayload);
+            if (partsError) {
+                console.error('Failed to insert parts', partsError);
+                alert('Failed to request parts, but status updated.');
+            }
+        }
+
         fetchRequests();
         setIsDetailModalOpen(false);
         setUpdateComment('');
         setUpdateStatus('');
         setProofFile(null);
+        setParts([]);
         setUploading(false);
     };
 
@@ -341,7 +361,7 @@ export default function MechanicMaintenancePage() {
             {/* Detail Modal */}
             {isDetailModalOpen && selectedRequest && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[32px] w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+                    <div className="bg-white rounded-[32px] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
                         <div className="p-6 border-b border-gray-100 flex justify-between items-center sticky top-0 bg-white z-10">
                             <div>
                                 <h2 className="text-2xl font-bold text-gray-900">Job Details</h2>
@@ -461,6 +481,74 @@ export default function MechanicMaintenancePage() {
                                                 placeholder="Describe the repair details..."
                                             />
                                         </div>
+
+                                        {updateStatus === 'Waiting for Parts' && (
+                                            <div className="space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <label className="block text-sm font-bold text-[#0047AB]">Requested Parts List</label>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => setParts([...parts, { name: '', price: '' }])}
+                                                        className="text-xs font-bold text-white bg-[#0047AB] px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1 shadow-sm"
+                                                    >
+                                                        <Plus size={14} /> Add Part
+                                                    </button>
+                                                </div>
+                                                
+                                                {parts.length === 0 ? (
+                                                    <p className="text-xs text-slate-500 italic text-center py-2">No parts added yet. Click "Add Part" to request items.</p>
+                                                ) : (
+                                                    <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                                                        {parts.map((part, index) => (
+                                                            <div key={index} className="flex items-start gap-2 bg-white px-3 py-3 rounded-lg border border-slate-200 shadow-sm relative group">
+                                                                <div className="flex-1 space-y-2">
+                                                                    <input 
+                                                                        type="text" 
+                                                                        placeholder="Part Name (e.g. Light Bulb)" 
+                                                                        value={part.name}
+                                                                        onChange={(e) => {
+                                                                            const newParts = [...parts];
+                                                                            newParts[index].name = e.target.value;
+                                                                            setParts(newParts);
+                                                                        }}
+                                                                        className="w-full text-sm px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#0047AB] font-medium text-slate-800"
+                                                                        required
+                                                                    />
+                                                                    <div className="relative">
+                                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">฿</span>
+                                                                        <input 
+                                                                            type="number" 
+                                                                            placeholder="Price" 
+                                                                            value={part.price}
+                                                                            min="0"
+                                                                            step="0.01"
+                                                                            onChange={(e) => {
+                                                                                const newParts = [...parts];
+                                                                                newParts[index].price = e.target.value;
+                                                                                setParts(newParts);
+                                                                            }}
+                                                                            className="w-full text-sm pl-8 pr-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#0047AB] font-bold text-[#0047AB]"
+                                                                            required
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const newParts = parts.filter((_, i) => i !== index);
+                                                                        setParts(newParts);
+                                                                    }}
+                                                                    className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors mt-1"
+                                                                    title="Remove Part"
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
 
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Proof of Work (Optional)</label>

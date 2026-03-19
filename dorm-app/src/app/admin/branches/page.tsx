@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Plus, Building2, MapPin, Phone, User } from 'lucide-react';
+// Note: Phone and User icons are still used in the branch table rows
 import { Branch } from '@/types/database';
 
 export default function ManageBranchesPage() {
@@ -13,8 +14,6 @@ export default function ManageBranchesPage() {
 
     const [formData, setFormData] = useState({
         branches_name: '',
-        manager_name: '',
-        phone: '',
         address: '',
         city: '',
         region: ''
@@ -54,8 +53,6 @@ export default function ManageBranchesPage() {
             setShowModal(false);
             setFormData({
                 branches_name: '',
-                manager_name: '',
-                phone: '',
                 address: '',
                 city: '',
                 region: ''
@@ -174,28 +171,7 @@ export default function ManageBranchesPage() {
                                         placeholder="e.g. Chiang Mai University Branch"
                                     />
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-1">Manager Name</label>
-                                        <input 
-                                            type="text" required 
-                                            className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-500 resize-none"
-                                            value={formData.manager_name}
-                                            onChange={e => setFormData({...formData, manager_name: e.target.value})}
-                                            placeholder="John Doe"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-1">Phone</label>
-                                        <input 
-                                            type="tel" required 
-                                            className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-500 resize-none"
-                                            value={formData.phone}
-                                            onChange={e => setFormData({...formData, phone: e.target.value})}
-                                            placeholder="08X-XXX-XXXX"
-                                        />
-                                    </div>
-                                </div>
+
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-1">Address</label>
                                     <textarea 
@@ -219,13 +195,20 @@ export default function ManageBranchesPage() {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-bold text-slate-700 mb-1">Region</label>
-                                        <input 
-                                            type="text" required 
-                                            className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-500 resize-none"
+                                        <select
+                                            required
+                                            className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-500"
                                             value={formData.region}
                                             onChange={e => setFormData({...formData, region: e.target.value})}
-                                            placeholder="Northern"
-                                        />
+                                        >
+                                            <option value="">-- Select Region --</option>
+                                            <option value="Northern">Northern</option>
+                                            <option value="Northeastern">Northeastern</option>
+                                            <option value="Central">Central</option>
+                                            <option value="Eastern">Eastern</option>
+                                            <option value="Western">Western</option>
+                                            <option value="Southern">Southern</option>
+                                        </select>
                                     </div>
                                 </div>
                             </form>

@@ -28,6 +28,7 @@ export default function ManagerMaintenancePage() {
     const [filteredData, setFilteredData] = useState<MaintenanceWithDetails[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
+    const [buildingFilter, setBuildingFilter] = useState('All');
 
     // Stats
     const [stats, setStats] = useState({ active: 0, completed: 0 });
@@ -57,8 +58,13 @@ export default function ManagerMaintenancePage() {
             res = res.filter(item => item.status_technician?.toLowerCase() === statusFilter.toLowerCase());
         }
 
+        // Building Filter
+        if (buildingFilter !== 'All') {
+            res = res.filter(item => item.room?.building?.name_building === buildingFilter);
+        }
+
         setFilteredData(res);
-    }, [data, searchTerm, statusFilter]);
+    }, [data, searchTerm, statusFilter, buildingFilter]);
 
     async function fetchMaintenanceRequests() {
         setLoading(true);
@@ -214,9 +220,21 @@ export default function ManagerMaintenancePage() {
                             onChange={(e) => setStatusFilter(e.target.value)}
                         >
                             <option value="All">All Status</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Repairing">Repairing</option>
-                            <option value="Done">Done</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Waiting for Parts">Waiting for Parts</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+
+                        {/* Building Filter */}
+                        <select
+                            className="bg-gray-100 text-gray-700 text-sm rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            value={buildingFilter}
+                            onChange={(e) => setBuildingFilter(e.target.value)}
+                        >
+                            <option value="All">All Buildings</option>
+                            {Array.from(new Set(data.map(d => d.room?.building?.name_building).filter(Boolean))).sort().map(name => (
+                                <option key={name} value={name}>{name}</option>
+                            ))}
                         </select>
 
                         {/* Search */}

@@ -16,10 +16,14 @@ interface MeterReading {
     contract?: {
         water_config_type?: 'unit' | 'fixed';
         water_fixed_price?: number;
+        user?: {
+            full_name: string;
+        };
         room?: {
             room_number: string;
             building?: {
                 branch_id: number;
+                name_building: string;
             }
         }
     }
@@ -33,6 +37,7 @@ export default function ManagerMeterPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedMonth, setSelectedMonth] = useState<string>('All');
     const [selectedYear, setSelectedYear] = useState<string>('All');
+    const [sortBy, setSortBy] = useState<string>('room-asc');
 
     // Rates
     const WATER_RATE = 18; // Standardized to 18
@@ -62,8 +67,28 @@ export default function ManagerMeterPage() {
             res = res.filter(item => new Date(item.reading_date).getFullYear().toString() === selectedYear);
         }
 
+        // Sort
+        res = [...res].sort((a, b) => {
+            const roomA = a.contract?.room?.room_number || '';
+            const roomB = b.contract?.room?.room_number || '';
+            const waterA = Math.max(0, a.current_water - a.prev_water);
+            const waterB = Math.max(0, b.current_water - b.prev_water);
+            const elecA = Math.max(0, a.current_electricity - a.prev_electricity);
+            const elecB = Math.max(0, b.current_electricity - b.prev_electricity);
+
+            switch (sortBy) {
+                case 'room-asc': return roomA.localeCompare(roomB, undefined, { numeric: true });
+                case 'room-desc': return roomB.localeCompare(roomA, undefined, { numeric: true });
+                case 'water-high': return waterB - waterA;
+                case 'water-low': return waterA - waterB;
+                case 'elec-high': return elecB - elecA;
+                case 'elec-low': return elecA - elecB;
+                default: return 0;
+            }
+        });
+
         setFilteredData(res);
-    }, [data, searchTerm, selectedMonth, selectedYear]);
+    }, [data, searchTerm, selectedMonth, selectedYear, sortBy]);
 
     // Derived Years
     const availableYears = Array.from(new Set(data.map(d => new Date(d.reading_date).getFullYear().toString()))).sort((a,b) => b.localeCompare(a));
@@ -88,7 +113,7 @@ export default function ManagerMeterPage() {
         try {
             let query = supabase
                 .from('meter_reading')
-                .select('*, contract:contract_id ( water_config_type, water_fixed_price, room:room_id ( room_number, building:building_id ( branch_id ) ) )')
+                .select('*, contract:contract_id ( water_config_type, water_fixed_price, user:user_id ( full_name ), room:room_id ( room_number, building:building_id ( branch_id, name_building ) ) )')
                 .order('reading_date', { ascending: false });
 
             // Apply Branch Filter
@@ -96,7 +121,7 @@ export default function ManagerMeterPage() {
                 // Using !inner to filter by nested relation
                 query = supabase
                     .from('meter_reading')
-                    .select('*, contract:contract_id!inner ( water_config_type, water_fixed_price, room:room_id!inner ( room_number, building:building_id!inner ( branch_id ) ) )')
+                    .select('*, contract:contract_id!inner ( water_config_type, water_fixed_price, user:user_id ( full_name ), room:room_id!inner ( room_number, building:building_id!inner ( branch_id, name_building ) ) )')
                     .eq('contract.room.building.branch_id', selectedBranchId)
                     .order('reading_date', { ascending: false });
             }
@@ -236,6 +261,20 @@ export default function ManagerMeterPage() {
                             ))}
                         </select>
 
+                        {/* Sort */}
+                        <select
+                            className="bg-gray-100 text-gray-700 text-sm rounded-xl px-4 py-2 border-r-8 border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value)}
+                        >
+                            <option value="room-asc">Room (A-Z)</option>
+                            <option value="room-desc">Room (Z-A)</option>
+                            <option value="water-high">Water Usage (High-Low)</option>
+                            <option value="water-low">Water Usage (Low-High)</option>
+                            <option value="elec-high">Electricity (High-Low)</option>
+                            <option value="elec-low">Electricity (Low-High)</option>
+                        </select>
+
                         {/* Search */}
                         <div className="relative">
                             <input
@@ -254,7 +293,7 @@ export default function ManagerMeterPage() {
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-gray-50 text-gray-500 text-xs uppercase font-semibold">
                             <tr>
-                                <th className="py-4 px-4 rounded-l-lg">Room / Date</th>
+                                <th className="py-4 px-4 rounded-l-lg">Room / Building</th>
                                 <th className="py-4 px-4">Water Usage</th>
                                 <th className="py-4 px-4 rounded-r-lg">Electricity Usage</th>
                             </tr>
@@ -274,8 +313,8 @@ export default function ManagerMeterPage() {
                                                     {row.contract?.room?.room_number || '-'}
                                                 </div>
                                                 <div>
-                                                    <p className="font-bold text-gray-800">Room {row.contract?.room?.room_number || '-'}</p>
-                                                    <p className="text-xs text-gray-500">{new Date(row.reading_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                                    <p className="font-bold text-gray-800">{(row.contract as any)?.user?.full_name || 'Room ' + (row.contract?.room?.room_number || '-')}</p>
+                                                    <p className="text-xs text-gray-500">{row.contract?.room?.building?.name_building || '-'}</p>
                                                 </div>
                                             </div>
                                         </td>
