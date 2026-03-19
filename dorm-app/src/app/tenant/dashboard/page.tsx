@@ -225,15 +225,43 @@ export default function TenantDashboard() {
                         const isOverdue = inv.status?.toLowerCase() !== 'paid' && inv.due_date && new Date(inv.due_date) < new Date();
                         const titlePrefix = isOverdue ? 'Overdue' : 'Unpaid';
                         
-                        newNotifications.push({
-                            id: `inv_${inv.id}`,
-                            type: isOverdue ? 'overdue_invoice' : 'invoice',
-                            title: `${titlePrefix} Invoice: ${inv.room_total_cost?.toLocaleString() || 0} THB`,
-                            description: dueDateDesc,
-                            date: inv.bill_date || inv.due_date || new Date().toISOString(),
-                            isRead: false,
-                            link: '/tenant/payment'
-                        });
+                        // Wait, don't show normal unpaid notification if a meeting state is active
+                        if (inv.meeting_status === 'none' || !inv.meeting_status) {
+                            newNotifications.push({
+                                id: `inv_${inv.id}`,
+                                type: isOverdue ? 'overdue_invoice' : 'invoice',
+                                title: `${titlePrefix} Invoice: ${inv.room_total_cost?.toLocaleString() || 0} THB`,
+                                description: dueDateDesc,
+                                date: inv.bill_date || inv.due_date || new Date().toISOString(),
+                                isRead: false,
+                                link: `/tenant/payment/${inv.id}`
+                            });
+                        }
+                    });
+
+                    // Check for Meeting Action needed by Tenant
+                    invoices.forEach(inv => {
+                        if (inv.meeting_status === 'pending_tenant') {
+                            newNotifications.push({
+                                id: `inv_meeting_${inv.id}`,
+                                type: 'system',
+                                title: 'Manager Scheduled Meeting',
+                                description: `Action Required: Please confirm the meeting date regarding your extremely late payment.`,
+                                date: inv.paid_date || new Date().toISOString(),
+                                isRead: false,
+                                link: `/tenant/payment/${inv.id}`
+                            });
+                        } else if (inv.meeting_status === 'confirmed') {
+                            newNotifications.push({
+                                id: `inv_meeting_${inv.id}_conf`,
+                                type: 'system',
+                                title: 'Meeting Confirmed / Penalty Applied',
+                                description: `Your meeting is confirmed. Score penalty (-50) applied.`,
+                                date: new Date().toISOString(),
+                                isRead: false,
+                                link: `/tenant/payment/${inv.id}`
+                            });
+                        }
                     });
                 }
 

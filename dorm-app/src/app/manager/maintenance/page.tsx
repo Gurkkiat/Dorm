@@ -110,6 +110,26 @@ export default function ManagerMaintenancePage() {
 
     if (loading) return <div className="p-8 text-center text-gray-500">Loading Dashboard...</div>;
 
+    const parseIssueDescription = (fullDescription: string) => {
+        let text = fullDescription || '';
+        let type = 'General';
+        let equipment = '-';
+
+        const typeMatch = text.match(/\[Type:\s*(.*?)\]/);
+        if (typeMatch) {
+            type = typeMatch[1];
+            text = text.replace(typeMatch[0], '').trim();
+        }
+
+        const eqMatch = text.match(/\[Equipment:\s*(.*?)\]/);
+        if (eqMatch) {
+            equipment = eqMatch[1];
+            text = text.replace(eqMatch[0], '').trim();
+        }
+
+        return { type, equipment, text };
+    };
+
     const currentDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
     // Helper for Status Badge
@@ -120,6 +140,17 @@ export default function ManagerMaintenancePage() {
         if (s === 'done' || s === 'completed') return <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><CheckCircle2 size={12} /> Done</span>;
         return <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold">{status}</span>;
     };
+
+    // Pre-parse selected request
+    let modalType = 'General';
+    let modalEquipment = '-';
+    let modalText = '';
+    if (selectedRequest) {
+        const parsed = parseIssueDescription(selectedRequest.issue_description);
+        modalType = parsed.type;
+        modalEquipment = parsed.equipment;
+        modalText = parsed.text;
+    }
 
     return (
         <div className="h-full flex flex-col p-6 bg-gray-50/50 gap-6 overflow-y-auto">
@@ -214,7 +245,9 @@ export default function ManagerMaintenancePage() {
                             </tr>
                         </thead>
                         <tbody className="text-sm divide-y divide-gray-50">
-                            {filteredData.map((row) => (
+                            {filteredData.map((row) => {
+                                const { type, equipment, text } = parseIssueDescription(row.issue_description);
+                                return (
                                 <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="py-4 px-4">
                                         <div className="flex items-center gap-3">
@@ -223,13 +256,13 @@ export default function ManagerMaintenancePage() {
                                             </div>
                                             <div>
                                                 <p className="font-bold text-gray-800">Room {row.room?.room_number || '-'}</p>
-                                                <p className="text-xs text-gray-500">{row.room?.building?.name_building || '-'} · Floor {row.room?.floor || '-'}</p>
+                                                <p className="text-xs text-gray-500">{type} Issue</p>
                                             </div>
                                         </div>
                                     </td>
                                     <td className="py-4 px-4 text-center">
-                                        <p className="text-gray-700 max-w-xs truncate mx-auto" title={row.issue_description}>
-                                            {row.issue_description}
+                                        <p className="text-gray-700 max-w-xs truncate mx-auto" title={text}>
+                                            {text}
                                         </p>
                                     </td>
                                     <td className="py-4 px-4 text-center text-gray-500">
@@ -252,7 +285,7 @@ export default function ManagerMaintenancePage() {
                                         </button>
                                     </td>
                                 </tr>
-                            ))}
+                            )})}
                             {filteredData.length === 0 && (
                                 <tr>
                                     <td colSpan={5} className="py-12 text-center text-gray-400">
@@ -286,11 +319,14 @@ export default function ManagerMaintenancePage() {
                         <div className="p-8 space-y-8">
                             {/* Request Info */}
                             <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
-                                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Issue Description</h3>
-                                <p className="text-gray-900 text-lg font-medium leading-relaxed">{selectedRequest.issue_description}</p>
+                                <div className="flex justify-between items-start mb-3">
+                                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Issue Description</h3>
+                                    <span className="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full border border-blue-200">{modalType}</span>
+                                </div>
+                                <p className="text-gray-900 text-lg font-medium leading-relaxed">{modalText}</p>
 
-                                <div className="mt-4 flex flex-col gap-3">
-                                    <div className="flex items-start gap-3 bg-white p-3 rounded-xl border border-gray-200">
+                                <div className="mt-4 flex flex-wrap gap-3">
+                                    <div className="flex items-start gap-3 bg-white p-3 rounded-xl border border-gray-200 flex-1">
                                         <div className="p-2 bg-blue-50 rounded-lg">
                                             <Wrench className="w-5 h-5 text-[#0047AB]" />
                                         </div>
@@ -299,11 +335,23 @@ export default function ManagerMaintenancePage() {
                                             <p className="text-sm font-medium text-gray-900">Room {selectedRequest.room?.room_number}</p>
                                         </div>
                                     </div>
+                                    
+                                    {modalEquipment !== '-' && (
+                                        <div className="flex items-start gap-3 bg-white p-3 rounded-xl border border-gray-200 flex-1">
+                                            <div className="p-2 bg-purple-50 rounded-lg">
+                                                <Hammer className="w-5 h-5 text-purple-600" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500 uppercase font-bold">Equipment</p>
+                                                <p className="text-sm font-medium text-gray-900 truncate max-w-[120px]" title={modalEquipment}>{modalEquipment}</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
 
-                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-gray-200 text-sm text-gray-600 w-fit">
-                                        <Clock className="w-4 h-4 text-[#0047AB]" />
-                                        {new Date(selectedRequest.requested_at).toLocaleString()}
-                                    </div>
+                                <div className="mt-4 flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-gray-200 text-sm text-gray-600 w-fit">
+                                    <Clock className="w-4 h-4 text-[#0047AB]" />
+                                    {new Date(selectedRequest.requested_at).toLocaleString()}
                                 </div>
 
                                 {selectedRequest.path_photos && (

@@ -189,6 +189,22 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         }
     };
 
+    const handleTenantConfirmMeeting = async () => {
+        if (!invoice) return;
+        try {
+            const { error } = await supabase
+                .from('invoice')
+                .update({ meeting_status: 'pending_manager_confirm' })
+                .eq('id', invoice.id);
+            if (error) throw error;
+            alert('Meeting confirmed. Waiting for manager finalization.');
+            setInvoice({ ...invoice, meeting_status: 'pending_manager_confirm' });
+        } catch (error) {
+            console.error('Error confirming meeting:', error);
+            alert('Failed to confirm meeting');
+        }
+    };
+
     if (loading) return <div className="p-8 text-center text-[#0047AB] font-bold">Loading Invoice...</div>;
     if (!invoice) return <div className="p-8 text-center text-red-500">Invoice not found</div>;
 
@@ -567,11 +583,58 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                         {/* CASE 3: PAID */}
                         {(computedStatus === 'paid') && (
                             <div className="flex flex-col items-center text-center">
-                                <div className="bg-[#4CAF50] rounded-full p-4 mb-4 shadow-lg">
-                                    <CheckCircle size={64} className="text-white" />
-                                </div>
-                                <h2 className="text-3xl font-bold mb-1">PAYMENT SUCCESSFUL</h2>
-                                <p className="text-xs opacity-70 mt-2 uppercase">Your transaction has been confirmed.<br />Thank you for your payment!</p>
+                                {invoice.meeting_status === 'pending_manager' ? (
+                                    <>
+                                        <div className="bg-orange-500 rounded-full p-4 mb-4 shadow-lg">
+                                            <Clock size={64} className="text-white" />
+                                        </div>
+                                        <h2 className="text-2xl font-bold mb-1">PAYMENT LATE</h2>
+                                        <p className="text-xs opacity-70 mt-2">Your payment was over 7 days late. The manager will propose a mandatory meeting soon.</p>
+                                    </>
+                                ) : invoice.meeting_status === 'pending_tenant' ? (
+                                    <>
+                                        <div className="bg-rose-500 rounded-full p-4 mb-4 shadow-lg">
+                                            <Calendar size={64} className="text-white" />
+                                        </div>
+                                        <h2 className="text-2xl font-bold mb-1">SCHEDULE MEETING</h2>
+                                        <p className="text-xs opacity-90 mt-2 mb-4">Please confirm the required meeting regarding your late payment.</p>
+                                        <div className="w-full bg-white text-black p-4 rounded-xl text-left text-sm space-y-2 mb-4 shadow-inner">
+                                            <p><strong>Proposed Date:</strong> {invoice.meeting_date}</p>
+                                            <p><strong>Proposed Time:</strong> {invoice.meeting_time}</p>
+                                            {invoice.meeting_note && <p><strong>Note:</strong> {invoice.meeting_note}</p>}
+                                        </div>
+                                        <button 
+                                            onClick={handleTenantConfirmMeeting}
+                                            className="bg-rose-600 hover:bg-rose-700 text-white font-bold py-2 px-6 rounded-lg transition-colors w-full"
+                                        >
+                                            Confirm Appointment
+                                        </button>
+                                    </>
+                                ) : invoice.meeting_status === 'pending_manager_confirm' ? (
+                                    <>
+                                        <div className="bg-blue-500 rounded-full p-4 mb-4 shadow-lg">
+                                            <Clock size={64} className="text-white" />
+                                        </div>
+                                        <h2 className="text-2xl font-bold mb-1">WAITING FOR MANAGER</h2>
+                                        <p className="text-xs opacity-70 mt-2">You confirmed the meeting. The manager will finalize it shortly.</p>
+                                    </>
+                                ) : invoice.meeting_status === 'confirmed' ? (
+                                    <>
+                                        <div className="bg-[#4CAF50] rounded-full p-4 mb-4 shadow-lg">
+                                            <CheckCircle size={64} className="text-white" />
+                                        </div>
+                                        <h2 className="text-2xl font-bold mb-1">MEETING CONFIRMED</h2>
+                                        <p className="text-xs opacity-70 mt-2">The meeting has been confirmed. You received a 50 penalty on your score.</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="bg-[#4CAF50] rounded-full p-4 mb-4 shadow-lg">
+                                            <CheckCircle size={64} className="text-white" />
+                                        </div>
+                                        <h2 className="text-3xl font-bold mb-1">PAYMENT SUCCESSFUL</h2>
+                                        <p className="text-xs opacity-70 mt-2 uppercase">Your transaction has been confirmed.<br />Thank you for your payment!</p>
+                                    </>
+                                )}
                             </div>
                         )}
 

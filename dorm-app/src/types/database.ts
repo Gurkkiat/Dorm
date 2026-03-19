@@ -47,6 +47,7 @@ export interface User {
     is_primary_tenant: boolean;
     branch_id?: number | null;
     profile_picture?: string | null;
+    tenant_score?: number; // [NEW] added for penalty tracking
 }
 
 export interface Contract {
@@ -80,6 +81,10 @@ export interface Invoice {
     paid_date: string | null; // Timestamp string or null
     due_date: string; // Timestamp string
     payment_slip: string | null; // Text (URL/Path) or null
+    meeting_status?: string; // [NEW] 'none', 'pending_manager', 'pending_tenant', 'pending_manager_confirm', 'confirmed'
+    meeting_date?: string | null; // [NEW] Date string
+    meeting_time?: string | null; // [NEW] Time string
+    meeting_note?: string | null; // [NEW]
 }
 
 export interface LogMonthlyRoom {

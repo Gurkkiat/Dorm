@@ -18,6 +18,7 @@ export default function TenantMaintenancePage() {
     const [description, setDescription] = useState('');
     const [type, setType] = useState('General'); // Default type
     const [selectedEquipmentId, setSelectedEquipmentId] = useState<string>('');
+    const [customEquipment, setCustomEquipment] = useState<string>('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,6 +90,33 @@ export default function TenantMaintenancePage() {
         }
     };
 
+    const getFilteredEquipment = () => {
+        if (type === 'General') return equipmentList;
+        if (type === 'Other') return equipmentList;
+
+        return equipmentList.filter(eq => {
+            const nameLower = eq.name.toLowerCase();
+            if (type === 'Electric') {
+                return eq.is_elec || ['air', 'ac', 'tv', 'fan', 'light', 'bulb', 'fridge', 'refrigerator', 'plug', 'switch', 'heater'].some(k => nameLower.includes(k));
+            }
+            if (type === 'Water') {
+                return ['water', 'sink', 'faucet', 'toilet', 'pipe', 'shower', 'tap', 'drain', 'hose', 'bathroom', 'basin'].some(k => nameLower.includes(k));
+            }
+            if (type === 'Furniture') {
+                return !eq.is_elec || ['bed', 'chair', 'table', 'desk', 'closet', 'wardrobe', 'sofa', 'mattress', 'cabinet', 'shelf', 'door', 'window', 'curtain'].some(k => nameLower.includes(k));
+            }
+            return true;
+        });
+    };
+
+    const filteredEquipmentList = getFilteredEquipment();
+
+    useEffect(() => {
+        if (selectedEquipmentId && !filteredEquipmentList.some(e => e.id.toString() === selectedEquipmentId)) {
+            setSelectedEquipmentId('');
+        }
+    }, [type, equipmentList]);
+
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -159,13 +187,18 @@ export default function TenantMaintenancePage() {
             // Construct Description
             let finalDescription = description;
 
-            // Note: User requested to simplify the description and not include equipment details for now.
-            // if (selectedEquipmentId) {
-            //     const eq = equipmentList.find(item => item.id.toString() === selectedEquipmentId);
-            //     if (eq) {
-            //         finalDescription = `[Equipment: ${eq.name} (${eq.serial_number})] ${description}`;
-            //     }
-            // }
+            if (type === 'Other') {
+                if (customEquipment.trim()) {
+                    finalDescription = `[Equipment: ${customEquipment.trim()}] ${finalDescription}`;
+                }
+            } else if (selectedEquipmentId) {
+                const eq = equipmentList.find(item => item.id.toString() === selectedEquipmentId);
+                if (eq) {
+                    finalDescription = `[Equipment: ${eq.name} (${eq.serial_number})] ${finalDescription}`;
+                }
+            }
+
+            finalDescription = `[Type: ${type}] ${finalDescription}`;
 
             const { error } = await supabase
                 .from('maintenance_request')
@@ -174,7 +207,6 @@ export default function TenantMaintenancePage() {
                         room_id: contract.room_id,
                         request_number: `REQ-${Date.now()}`,
                         issue_description: finalDescription,
-                        // type_of_repair: type, 
                         status_technician: 'Pending',
                         requested_at: new Date().toISOString(),
                         path_photos: photoUrl,
@@ -189,6 +221,7 @@ export default function TenantMaintenancePage() {
             setDescription('');
             setType('General');
             setSelectedEquipmentId('');
+            setCustomEquipment('');
             setImageFile(null);
             setImagePreview(null);
             fetchRequestsAndEquipment();
@@ -377,23 +410,33 @@ export default function TenantMaintenancePage() {
                                 {/* Equipment Selection */}
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-2">Equipment (Optional)</label>
-                                    <div className="relative">
-                                        <select
-                                            value={selectedEquipmentId}
-                                            onChange={(e) => setSelectedEquipmentId(e.target.value)}
-                                            className="w-full p-3 pr-10 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#0047AB] transition-all text-gray-700 appearance-none cursor-pointer"
-                                        >
-                                            <option value="">-- Select Specific Equipment --</option>
-                                            {equipmentList.map((item) => (
-                                                <option key={item.id} value={item.id}>
-                                                    {item.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
-                                            <ChevronDown size={20} />
+                                    {type === 'Other' ? (
+                                        <input
+                                            type="text"
+                                            value={customEquipment}
+                                            onChange={(e) => setCustomEquipment(e.target.value)}
+                                            placeholder="Enter equipment name..."
+                                            className="w-full p-3 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#0047AB] transition-all text-gray-700"
+                                        />
+                                    ) : (
+                                        <div className="relative">
+                                            <select
+                                                value={selectedEquipmentId}
+                                                onChange={(e) => setSelectedEquipmentId(e.target.value)}
+                                                className="w-full p-3 pr-10 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#0047AB] transition-all text-gray-700 appearance-none cursor-pointer"
+                                            >
+                                                <option value="">-- Select Specific Equipment --</option>
+                                                {filteredEquipmentList.map((item) => (
+                                                    <option key={item.id} value={item.id}>
+                                                        {item.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
+                                                <ChevronDown size={20} />
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </div>
 
                                 {/* Description */}

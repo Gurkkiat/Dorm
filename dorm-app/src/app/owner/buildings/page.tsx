@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Building, Plus, MapPin, DoorOpen, PawPrint } from 'lucide-react';
+import { Building, Plus, MapPin, DoorOpen, PawPrint, Trash2 } from 'lucide-react';
 import { Building as BuildingType, Room } from '@/types/database';
 
 export default function ManageBuildingsPage() {
@@ -69,7 +69,7 @@ export default function ManageBuildingsPage() {
         rent_price: 5000,
         water_unit: 0,
         elec_unit: 0,
-        status: 'Available'
+        status: 'Vacant'
     });
 
     // Bulk Mode Form
@@ -167,7 +167,7 @@ export default function ManageBuildingsPage() {
             
             alert('Room created successfully!');
             setShowRoomModal(false);
-            setRoomForm({ room_number: '', floor: 1, pet_status: false, rent_price: 5000, water_unit: 0, elec_unit: 0, status: 'Available' });
+            setRoomForm({ room_number: '', floor: 1, pet_status: false, rent_price: 5000, water_unit: 0, elec_unit: 0, status: 'Vacant' });
             fetchData();
         } catch (err: any) {
             console.error('Error creating room:', err);
@@ -201,7 +201,7 @@ export default function ManageBuildingsPage() {
                             pet_status: bulkForm.pet_status,
                             water_unit: 0,
                             elec_unit: 0,
-                            status: 'Available',
+                            status: 'Vacant',
                             current_residents: 0
                         });
                     }
@@ -282,6 +282,45 @@ export default function ManageBuildingsPage() {
         }
     };
 
+    const handleDeleteRoom = async () => {
+        if (!selectedRoom) return;
+        
+        // Prevent deletion of occupied rooms visually, but double check in logic
+        if (['Occupied', 'occupied', 'Assign', 'assign'].includes(selectedRoom.status)) {
+            alert('Cannot delete this room because it is currently assigned or occupied.');
+            return;
+        }
+
+        if (!window.confirm(`Are you sure you want to delete Room ${selectedRoom.room_number}?\n\nThis action cannot be undone.`)) {
+            return;
+        }
+
+        setProcessing(true);
+        try {
+            const { error } = await supabase
+                .from('room')
+                .delete()
+                .eq('id', selectedRoom.id);
+            
+            if (error) {
+                // Handle PostgreSQL foreign key violation (usually 23503)
+                if (error.code === '23503') {
+                    throw new Error('This room cannot be deleted because it has history (like past contracts, invoices, or maintenance records) tied to it. Try changing its status to Maintenance instead if it is out of service.');
+                }
+                throw error;
+            }
+
+            alert('Room deleted successfully!');
+            setShowEditRoomModal(false);
+            fetchData();
+        } catch (err: any) {
+            console.error('Error deleting room:', err);
+            alert('Error deleting room: ' + err.message);
+        } finally {
+            setProcessing(false);
+        }
+    };
+
     return (
         <div className="h-full flex flex-col gap-6">
             {/* Header */}
@@ -357,7 +396,7 @@ export default function ManageBuildingsPage() {
                                                 <DoorOpen size={24} className={`mb-2 transition-colors ${getRoomIconColor(room.status)}`} />
                                                 <h3 className="font-bold text-lg text-slate-800">{room.room_number}</h3>
                                                 <p className="text-xs text-slate-500 font-medium tracking-wide">Floor {room.floor}</p>
-                                                <div className={`mt-3 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm ${getRoomBadgeStyle(room.status)}`}>
+                                                <div className={`mt-3 text-[10px] font-black px-2.5 py-1 rounded-full tracking-wider shadow-sm capitalize ${getRoomBadgeStyle(room.status)}`}>
                                                     {room.status}
                                                 </div>
                                             </div>
@@ -400,7 +439,7 @@ export default function ManageBuildingsPage() {
                                         type="number" required min="1"
                                         className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
                                         value={buildingForm.total_floor}
-                                        onChange={e => setBuildingForm({...buildingForm, total_floor: Number(e.target.value)})}
+                                        onChange={e => setBuildingForm({...buildingForm, total_floor: e.target.value === '' ? '' as unknown as number : Number(e.target.value)})}
                                     />
                                 </div>
                                 <div>
@@ -480,7 +519,7 @@ export default function ManageBuildingsPage() {
                                                 type="number" required min="1"
                                                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
                                                 value={roomForm.floor}
-                                                onChange={e => setRoomForm({...roomForm, floor: Number(e.target.value)})}
+                                                onChange={e => setRoomForm({...roomForm, floor: e.target.value === '' ? '' as unknown as number : Number(e.target.value)})}
                                             />
                                         </div>
                                     </div>
@@ -491,7 +530,7 @@ export default function ManageBuildingsPage() {
                                                 type="number" required min="0" step="100"
                                                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
                                                 value={roomForm.rent_price}
-                                                onChange={e => setRoomForm({...roomForm, rent_price: Number(e.target.value)})}
+                                                onChange={e => setRoomForm({...roomForm, rent_price: e.target.value === '' ? '' as unknown as number : Number(e.target.value)})}
                                             />
                                         </div>
                                         <div className="flex flex-col justify-end">
@@ -519,7 +558,7 @@ export default function ManageBuildingsPage() {
                                                 type="number" required min="1" 
                                                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
                                                 value={bulkForm.start_floor}
-                                                onChange={e => setBulkForm({...bulkForm, start_floor: Number(e.target.value)})}
+                                                onChange={e => setBulkForm({...bulkForm, start_floor: e.target.value === '' ? '' as unknown as number : Number(e.target.value)})}
                                             />
                                         </div>
                                         <div>
@@ -528,7 +567,7 @@ export default function ManageBuildingsPage() {
                                                 type="number" required min="1"
                                                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
                                                 value={bulkForm.end_floor}
-                                                onChange={e => setBulkForm({...bulkForm, end_floor: Number(e.target.value)})}
+                                                onChange={e => setBulkForm({...bulkForm, end_floor: e.target.value === '' ? '' as unknown as number : Number(e.target.value)})}
                                             />
                                         </div>
                                     </div>
@@ -539,7 +578,7 @@ export default function ManageBuildingsPage() {
                                                 type="number" required min="1"
                                                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
                                                 value={bulkForm.rooms_per_floor}
-                                                onChange={e => setBulkForm({...bulkForm, rooms_per_floor: Number(e.target.value)})}
+                                                onChange={e => setBulkForm({...bulkForm, rooms_per_floor: e.target.value === '' ? '' as unknown as number : Number(e.target.value)})}
                                             />
                                         </div>
                                         <div>
@@ -548,7 +587,7 @@ export default function ManageBuildingsPage() {
                                                 type="number" required min="0" step="100"
                                                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2"
                                                 value={bulkForm.rent_price}
-                                                onChange={e => setBulkForm({...bulkForm, rent_price: Number(e.target.value)})}
+                                                onChange={e => setBulkForm({...bulkForm, rent_price: e.target.value === '' ? '' as unknown as number : Number(e.target.value)})}
                                             />
                                         </div>
                                     </div>
@@ -596,7 +635,7 @@ export default function ManageBuildingsPage() {
                                 <DoorOpen size={20} className="text-indigo-600" />
                                 Room {selectedRoom.room_number}
                             </h2>
-                            <div className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm ${getRoomBadgeStyle(selectedRoom.status)}`}>
+                            <div className={`text-[10px] font-black px-2.5 py-1 rounded-full tracking-wider shadow-sm capitalize ${getRoomBadgeStyle(selectedRoom.status)}`}>
                                 {selectedRoom.status}
                             </div>
                         </div>
@@ -654,7 +693,7 @@ export default function ManageBuildingsPage() {
                                         type="number" required min="0" step="100"
                                         className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2 font-medium"
                                         value={editRoomForm.rent_price}
-                                        onChange={e => setEditRoomForm({...editRoomForm, rent_price: Number(e.target.value)})}
+                                        onChange={e => setEditRoomForm({...editRoomForm, rent_price: e.target.value === '' ? '' as unknown as number : Number(e.target.value)})}
                                     />
                                     <p className="text-[10px] text-slate-400 font-medium italic mt-1.5">* Modifying rent only affects future contracts</p>
                                 </div>
@@ -673,19 +712,31 @@ export default function ManageBuildingsPage() {
                             </form>
                         </div>
 
-                        <div className="px-6 py-4 border-t border-slate-100 flex gap-3 bg-slate-50">
+                        <div className="px-6 py-4 border-t border-slate-100 flex justify-between items-stretch bg-slate-50 gap-3">
                             <button
-                                onClick={() => setShowEditRoomModal(false)}
-                                className="flex-1 px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-xl font-bold hover:bg-slate-100 transition-colors"
+                                type="button"
+                                onClick={handleDeleteRoom}
+                                disabled={processing || ['Occupied', 'occupied', 'Assign', 'assign'].includes(selectedRoom.status)}
+                                className={`px-4 py-2.5 rounded-xl font-bold flex items-center justify-center transition-all min-w-[48px] ${['Occupied', 'occupied', 'Assign', 'assign'].includes(selectedRoom.status) ? 'bg-slate-100 text-slate-400 cursor-not-allowed hidden' : 'bg-red-50 text-red-600 hover:bg-red-500 hover:text-white border border-red-200 hover:border-red-500 shadow-sm'}`}
+                                title={['Occupied', 'occupied', 'Assign', 'assign'].includes(selectedRoom.status) ? "Cannot delete an occupied room" : "Delete Room"}
                             >
-                                Close
+                                <Trash2 size={18} />
                             </button>
-                            <button
-                                type="submit" form="edit-room-form" disabled={processing}
-                                className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors"
-                            >
-                                {processing ? 'Saving...' : 'Save Changes'}
-                            </button>
+                            <div className="flex gap-3 flex-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEditRoomModal(false)}
+                                    className="flex-1 px-4 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold hover:bg-slate-100 transition-colors shadow-sm"
+                                >
+                                    Close
+                                </button>
+                                <button
+                                    type="submit" form="edit-room-form" disabled={processing}
+                                    className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-sm"
+                                >
+                                    {processing ? 'Saving...' : 'Save Changes'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

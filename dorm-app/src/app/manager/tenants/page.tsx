@@ -12,6 +12,7 @@ interface TenantRowData {
     room_number: string;
     gender: string;
     name: string;
+    score: number;
     move_in: string;
     move_out: string;
     maintenance_status: string;
@@ -61,7 +62,7 @@ export default function ManageTenantsPage() {
                 // 1. Fetch Active Contracts with Room and User (Filtered by Branch)
                 const { data: contracts, error: contractError } = await supabase
                     .from('contract')
-                    .select('*, room:room_id!inner(room_number, building_id, rent_price, building:building_id!inner(branch_id, name_building)), user:user_id(full_name, sex, is_primary_tenant)')
+                    .select('*, room:room_id!inner(room_number, building_id, rent_price, building:building_id!inner(branch_id, name_building)), user:user_id(full_name, sex, is_primary_tenant, tenant_score)')
                     .order('id', { ascending: true });
 
                 if (contractError) throw contractError;
@@ -86,7 +87,7 @@ export default function ManageTenantsPage() {
                         building_id: number;
                         building: { branch_id: number; name_building: string; }
                     };
-                    user: { full_name: string; sex: string; is_primary_tenant: boolean | string };
+                    user: { full_name: string; sex: string; is_primary_tenant: boolean | string; tenant_score: number | null };
                 }
 
                 const rows: TenantRowData[] = ((contracts as unknown as ContractWithDetails[]) || []).map((c) => {
@@ -109,6 +110,7 @@ export default function ManageTenantsPage() {
                         room_number: c.room?.room_number || 'N/A',
                         gender: c.user?.sex || '-',
                         name: c.user?.full_name || 'Unknown',
+                        score: c.user?.tenant_score ?? 100,
                         move_in: c.move_in ? new Date(c.move_in).toLocaleDateString('th-TH') : '-',
                         move_out: c.move_out ? new Date(c.move_out).toLocaleDateString('th-TH') : '-',
                         maintenance_status: maximize(latestMaint?.status_technician),
@@ -440,6 +442,7 @@ export default function ManageTenantsPage() {
                                 <th className="py-3 px-2 font-normal">Room</th>
                                 <th className="py-3 px-2 font-normal">Gender</th>
                                 <th className="py-3 px-2 font-normal text-left pl-4">Name</th>
+                                <th className="py-3 px-2 font-normal">Score</th>
                                 <th className="py-3 px-2 font-normal">Move in</th>
                                 <th className="py-3 px-2 font-normal">Move out</th>
                                 <th className="py-3 px-2 font-normal">Maintenance</th>
@@ -458,6 +461,11 @@ export default function ManageTenantsPage() {
                                     <td className="py-4 px-2">{row.room_number}</td>
                                     <td className="py-4 px-2">{row.gender}</td>
                                     <td className="py-4 px-2 text-left pl-4">{row.name}</td>
+                                    <td className="py-4 px-2">
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${row.score >= 90 ? 'bg-green-500/20 text-green-400' : row.score >= 50 ? 'bg-orange-500/20 text-orange-400' : 'bg-red-500/20 text-red-400'}`}>
+                                            {row.score}
+                                        </span>
+                                    </td>
                                     <td className="py-4 px-2 text-gray-200 text-xs">{row.move_in}</td>
                                     <td className="py-4 px-2 text-gray-200 text-xs">{row.move_out}</td>
                                     <td className={`py-4 px-2 font-bold ${getMaintColor(row.maintenance_status)}`}>

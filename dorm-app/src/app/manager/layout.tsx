@@ -1,6 +1,6 @@
 'use client';
 
-import { Building2, LayoutGrid, DollarSign, Wrench, Gauge, Users, User, LogOut, UserCog } from 'lucide-react';
+import { Building2, LayoutGrid, DollarSign, Wrench, Gauge, Users, User, LogOut, UserCog, Bell } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -109,8 +109,10 @@ function ManagerLayoutContent({
         { name: 'Dashboard', href: '/manager/dashboard', icon: LayoutGrid },
         { name: 'Payment', href: '/manager/payments', icon: DollarSign },
         { name: 'Maintenance', href: '/manager/maintenance', icon: Wrench },
+        { name: 'Mechanics', href: '/manager/mechanics', icon: UserCog },
         { name: 'Meter', href: '/manager/meter', icon: Gauge },
         { name: 'Manage Tenant', href: '/manager/tenants', icon: Users },
+        { name: 'Notifications', href: '/manager/notifications', icon: Bell },
     ];
 
     // Removed Manage Users from here as it's now in /admin/owners
