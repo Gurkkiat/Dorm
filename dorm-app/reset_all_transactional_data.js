@@ -11,6 +11,10 @@ async function resetAllData() {
     console.log('Users, Buildings, and Equipment will remain.');
 
     // 1. Delete Income & Expenses (Leaf Nodes that reference Invoice/Maintenance)
+    const { error: partError } = await supabase.from('maintenance_parts').delete().neq('id', 0);
+    if (partError) console.error('Error deleting maintenance parts:', partError);
+    else console.log('- Maintenance parts deleted.');
+
     const { error: incError } = await supabase.from('income').delete().neq('id', 0);
     if (incError) console.error('Error deleting income:', incError);
     else console.log('- Income deleted.');
@@ -45,14 +49,14 @@ async function resetAllData() {
     else console.log('- Contracts deleted.');
 
     // 7. Reset Rooms
-    console.log('Resetting Room Status to Vaccant...');
+    console.log('Resetting Room Status to Vacant...');
     const { error: roomError } = await supabase
         .from('room')
-        .update({ status: 'Vaccant', current_residents: 0, water_unit: 0, elec_unit: 0 })
+        .update({ status: 'Vacant', current_residents: 0, water_unit: 0, elec_unit: 0 })
         .neq('id', 0);
 
     if (roomError) console.error('Error resetting rooms:', roomError);
-    else console.log('- Rooms reset to Vaccant.');
+    else console.log('- Rooms reset to Vacant.');
 
     // 8. Delete Users (Tenants only)
     console.log('Deleting Tenant Users...');

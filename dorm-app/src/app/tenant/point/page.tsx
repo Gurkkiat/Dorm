@@ -6,33 +6,48 @@ import { Award, AlertTriangle, ShieldCheck, XCircle } from 'lucide-react';
 
 export default function TenantPointPage() {
     const [score, setScore] = useState<number | null>(null);
+    const [history, setHistory] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
     useEffect(() => {
-        async function fetchScore() {
+        async function fetchData() {
             setLoading(true);
             try {
                 const userId = localStorage.getItem('user_id');
                 if (!userId) return;
 
-                const { data, error } = await supabase
+                // Fetch Score
+                const { data: userData, error: userError } = await supabase
                     .from('users')
                     .select('tenant_score')
                     .eq('id', userId)
                     .single();
 
-                if (error) throw error;
-                if (data) {
-                    setScore(data.tenant_score ?? 100);
+                if (userError) throw userError;
+                if (userData) {
+                    setScore(userData.tenant_score ?? 100);
                 }
+
+                // Fetch Penalty History from Notifications
+                const { data: notifs, error: notifError } = await supabase
+                    .from('notifications')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .eq('type', 'penalty')
+                    .order('created_at', { ascending: false });
+                
+                if (notifError) throw notifError;
+                setHistory(notifs || []);
+
             } catch (err) {
-                console.error('Error fetching tenant score:', err);
+                console.error('Error fetching tenant point data:', err);
             } finally {
                 setLoading(false);
             }
         }
 
-        fetchScore();
+        fetchData();
     }, []);
 
     if (loading) {
@@ -74,12 +89,20 @@ export default function TenantPointPage() {
     const strokeDashoffset = circumference - (currentScore / 100) * circumference;
 
     return (
-        <div className="max-w-4xl mx-auto py-8">
-            <h1 className="text-3xl font-bold text-[#0047AB] mb-6 flex items-center gap-3">
-                <Award size={32} /> My Behavior Points
-            </h1>
+        <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6">
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold text-[#0047AB] flex items-center gap-3">
+                    <Award size={32} /> My Behavior Points
+                </h1>
+                <button 
+                    onClick={() => setIsHistoryOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-all font-bold text-sm shadow-sm"
+                >
+                    <AlertTriangle size={18} className="text-orange-500" /> View History
+                </button>
+            </div>
 
-            <div className="grid md:grid-cols-2 gap-8">
+            <div className="grid md:grid-cols-2 gap-8 mb-10">
                 {/* Score Section */}
                 <div className="bg-white rounded-3xl p-10 shadow-lg border border-gray-100 flex flex-col items-center justify-center text-center relative overflow-hidden">
                     {/* Decorative background */}
@@ -120,7 +143,7 @@ export default function TenantPointPage() {
                         </div>
                     </div>
 
-                    <div className={`inline-flex items-center gap-2 px-6 py-2 rounded-full border shadow-sm ${statusColor} bg-white font-bold text-lg`}>
+                    <div className={`inline-flex items-center gap-2 px-6 py-2 rounded-full border shadow-sm ${statusColor} bg-white font-bold text-lg text-center`}>
                         <StatusIcon size={24} /> {statusText}
                     </div>
                     
@@ -168,6 +191,62 @@ export default function TenantPointPage() {
                     </div>
                 </div>
             </div>
+
+            {/* History Modal */}
+            {isHistoryOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div 
+                        className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                                <AlertTriangle className="text-orange-500" /> Deduction History
+                            </h2>
+                            <button 
+                                onClick={() => setIsHistoryOpen(false)}
+                                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-400 hover:text-gray-600"
+                            >
+                                <XCircle size={24} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 max-h-[60vh] overflow-y-auto">
+                            {history.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <ShieldCheck size={48} className="mx-auto text-green-300 mb-4" />
+                                    <p className="text-gray-500 font-medium">No point deductions found.</p>
+                                    <p className="text-gray-400 text-sm">You have a perfect record!</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {history.map((item) => (
+                                        <div key={item.id} className="flex flex-col p-4 rounded-2xl bg-gray-50 transition-all border border-gray-100">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h3 className="font-bold text-gray-900 text-sm">{item.title}</h3>
+                                                <span className={`font-black px-2 py-0.5 rounded text-xs ${item.title.includes('Extreme') ? 'text-red-500 bg-red-50 border border-red-100' : 'text-orange-500 bg-orange-50 border border-orange-100'}`}>
+                                                    {item.title.includes('Extreme') ? '-50' : '-10'} PT
+                                                </span>
+                                            </div>
+                                            <p className="text-gray-600 text-xs mb-2 leading-relaxed">{item.description}</p>
+                                            <span className="text-[10px] text-gray-400 font-mono mt-auto">{new Date(item.created_at).toLocaleString('en-GB')}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="p-6 border-t border-gray-100 bg-gray-50/50 text-center">
+                            <button 
+                                onClick={() => setIsHistoryOpen(false)}
+                                className="w-full py-3 bg-[#0047AB] text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

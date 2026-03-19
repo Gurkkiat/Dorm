@@ -248,12 +248,9 @@ export default function MechanicMaintenancePage() {
     const getLocationString = (req: MaintenanceRequestWithDetails) => {
         const room = req.room;
         const building = room?.building;
-        const branch = building?.branch;
 
         const parts = [];
-        if (branch?.branches_name) parts.push(branch.branches_name);
         if (building?.name_building) parts.push(building.name_building);
-        if (room?.floor) parts.push(`Fl. ${room.floor}`);
         if (room?.room_number) parts.push(`Room ${room.room_number}`);
 
         return parts.join(' • ') || `Room ID: ${req.room_id}`;
@@ -330,6 +327,18 @@ export default function MechanicMaintenancePage() {
                                 </span>
                             </div>
 
+                            <div className="flex flex-wrap gap-2 mb-3">
+                                {req.issue_type && (
+                                    <span className="px-2 py-0.5 bg-blue-50 text-[#0047AB] text-[10px] font-bold uppercase rounded-md border border-blue-100 italic">
+                                        {req.issue_type}
+                                    </span>
+                                )}
+                                {req.equipment_name && (
+                                    <span className="px-2 py-0.5 bg-gray-50 text-gray-600 text-[10px] font-bold uppercase rounded-md border border-gray-100 italic">
+                                        {req.equipment_name}
+                                    </span>
+                                )}
+                            </div>
                             <h3 className="font-bold text-gray-900 text-lg mb-2 line-clamp-2">{req.issue_description}</h3>
 
                             <div className="mt-auto space-y-4">
@@ -378,7 +387,17 @@ export default function MechanicMaintenancePage() {
                         <div className="p-8 space-y-8">
                             {/* Request Info */}
                             <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
-                                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Issue Description</h3>
+                                <div className="flex justify-between items-start mb-3">
+                                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Issue Description</h3>
+                                    <div className="flex gap-2">
+                                        {selectedRequest.issue_type && (
+                                            <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-1 rounded-full border border-blue-200 uppercase">{selectedRequest.issue_type}</span>
+                                        )}
+                                        {selectedRequest.equipment_name && (
+                                            <span className="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-1 rounded-full border border-purple-200 uppercase">{selectedRequest.equipment_name}</span>
+                                        )}
+                                    </div>
+                                </div>
                                 <p className="text-gray-900 text-lg font-medium leading-relaxed">{selectedRequest.issue_description}</p>
 
                                 <div className="mt-4 flex flex-col gap-3">

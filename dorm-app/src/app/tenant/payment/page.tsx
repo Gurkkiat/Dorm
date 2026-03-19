@@ -53,7 +53,8 @@ export default function TenantPaymentPage() {
 
     const getComputedStatus = (invoice: Invoice) => {
         let s = invoice.status?.toLowerCase() || '';
-        if (s !== 'paid' && invoice.due_date && new Date(invoice.due_date) < new Date()) {
+        // Only show Overdue if the bill has been issued (status is unpaid)
+        if (s === 'unpaid' && invoice.due_date && new Date(invoice.due_date) < new Date()) {
             s = 'overdue';
         }
         return s;

@@ -497,11 +497,6 @@ export default function ManageTenantsPage() {
                     </table>
                 </div >
 
-                {/* Footer Show More */}
-                < div className="mt-6 text-center text-xs font-bold tracking-widest cursor-pointer hover:opacity-80" >
-                    SHOW MORE
-                </div >
-
                 {/* Floating Make Contract Button */}
                 < div className="absolute bottom-8 left-1/2 transform -translate-x-1/2" >
                     <Link href="/contracts/create">

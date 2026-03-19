@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useManager } from '../ManagerContext';
 import { Bell, Clock, Calendar, CheckCircle, Wrench, AlertCircle, ChevronRight } from 'lucide-react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import PointScoreModal from '@/components/PointScoreModal';
 
 interface NotificationItem {
     id: string;
-    type: 'meeting_draft' | 'meeting_confirm' | 'maintenance' | 'system';
+    type: 'meeting_draft' | 'meeting_confirm' | 'maintenance' | 'system' | 'penalty' | 'meeting';
     title: string;
     description: string;
     date: string;
@@ -19,8 +20,13 @@ interface NotificationItem {
 
 export default function ManagerNotificationsPage() {
     const { selectedBranchId, branches } = useManager();
+    const router = useRouter();
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     const [loading, setLoading] = useState(true);
+
+    // Popup State
+    const [isPointModalOpen, setIsPointModalOpen] = useState(false);
+    const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
     const currentBranchName = branches.find(b => b.id === selectedBranchId)?.branches_name || 'All Branches';
 
@@ -61,7 +67,7 @@ export default function ManagerNotificationsPage() {
                                 type: 'meeting_confirm',
                                 title: 'Tenant Responded to Meeting Request',
                                 description: `Invoice #${inv.id}: The tenant has confirmed your meeting. Please finalize it.`,
-                                date: new Date().toISOString(), // Idealy we would use a tracking timeline, but we'll use today for sorting
+                                date: new Date().toISOString(),
                                 link: `/manager/invoices/${inv.id}/verify`,
                                 isRead: false,
                                 urgent: true
@@ -70,7 +76,7 @@ export default function ManagerNotificationsPage() {
                     }
                 }
 
-                // 2. Fetch Pending Maintenance (Optional enhancement for manager)
+                // 2. Fetch Pending Maintenance
                 let maintQuery = supabase
                     .from('maintenance_request')
                     .select('*, room:room_id(building:building_id(branch_id))')
@@ -95,13 +101,28 @@ export default function ManagerNotificationsPage() {
                     }
                 }
 
-                // Sort by relative urgency and date
-                fetchedNotifs.sort((a, b) => {
-                    if (a.urgent && !b.urgent) return -1;
-                    if (!a.urgent && b.urgent) return 1;
-                    return new Date(b.date).getTime() - new Date(a.date).getTime();
-                });
-
+                // 3. Fetch Persistent Notifications
+                const { data: persistentNotifs, error: pError } = await supabase
+                    .from('notifications')
+                    .select('*')
+                    .eq('is_read', false)
+                    .order('created_at', { ascending: false });
+                
+                if (pError) throw pError;
+                if (persistentNotifs) {
+                    for (const pn of persistentNotifs) {
+                        fetchedNotifs.push({
+                            id: pn.id,
+                            type: pn.type as any,
+                            title: pn.title,
+                            description: pn.description,
+                            date: pn.created_at,
+                            link: pn.link || '#',
+                            isRead: pn.is_read,
+                            urgent: pn.type === 'penalty' || pn.type === 'meeting'
+                        });
+                    }
+                }
                 setNotifications(fetchedNotifs);
             } catch (err) {
                 console.error('Error fetching manager notifications', err);
@@ -112,6 +133,37 @@ export default function ManagerNotificationsPage() {
 
         fetchNotifications();
     }, [selectedBranchId, branches]);
+
+    const markAsRead = async (id: string | number) => {
+        if (typeof id === 'string' && id.length > 20) { 
+            try {
+                await supabase
+                    .from('notifications')
+                    .update({ is_read: true })
+                    .eq('id', id);
+                
+                setNotifications(prev => prev.filter(n => n.id !== id));
+            } catch (err) {
+                console.error('Error marking as read:', err);
+            }
+        }
+    };
+
+    const handleNotifClick = (notif: NotificationItem, e: React.MouseEvent) => {
+        if (notif.link?.includes('userId=')) {
+            e.preventDefault();
+            const url = new URL(notif.link, window.location.origin);
+            const uid = url.searchParams.get('userId');
+            if (uid) {
+                setSelectedUserId(uid);
+                setIsPointModalOpen(true);
+                markAsRead(notif.id);
+            }
+        } else if (notif.link && notif.link !== '#') {
+            markAsRead(notif.id);
+            router.push(notif.link);
+        }
+    };
 
     if (loading) {
         return (
@@ -147,10 +199,10 @@ export default function ManagerNotificationsPage() {
                 <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
                     <div className="divide-y divide-gray-100">
                         {notifications.map((notif) => (
-                            <Link 
-                                href={notif.link}
+                            <div 
                                 key={notif.id}
-                                className="group block hover:bg-slate-50 transition-colors p-6 relative overflow-hidden"
+                                onClick={(e) => handleNotifClick(notif, e)}
+                                className="group block cursor-pointer hover:bg-slate-50 transition-colors p-6 relative overflow-hidden"
                             >
                                 {notif.urgent && (
                                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-rose-500" />
@@ -160,11 +212,13 @@ export default function ManagerNotificationsPage() {
                                         notif.type === 'meeting_draft' ? 'bg-orange-100 text-orange-600' :
                                         notif.type === 'meeting_confirm' ? 'bg-indigo-100 text-indigo-600' :
                                         notif.type === 'maintenance' ? 'bg-blue-100 text-blue-600' :
+                                        notif.type === 'penalty' || notif.type === 'meeting' ? 'bg-rose-100 text-rose-600' :
                                         'bg-gray-100 text-gray-600'
                                     }`}>
                                         {notif.type === 'meeting_draft' ? <Clock size={28} /> :
                                          notif.type === 'meeting_confirm' ? <Calendar size={28} /> :
                                          notif.type === 'maintenance' ? <Wrench size={28} /> :
+                                         notif.type === 'penalty' || notif.type === 'meeting' ? <AlertCircle size={28} /> :
                                          <AlertCircle size={28} />}
                                     </div>
                                     <div className="flex-1 min-w-0 pt-1">
@@ -184,11 +238,18 @@ export default function ManagerNotificationsPage() {
                                         <ChevronRight size={24} />
                                     </div>
                                 </div>
-                            </Link>
+                            </div>
                         ))}
                     </div>
                 </div>
             )}
+
+            {/* Score Detail Modal */}
+            <PointScoreModal 
+                isOpen={isPointModalOpen}
+                onClose={() => setIsPointModalOpen(false)}
+                userId={selectedUserId || ''}
+            />
         </div>
     );
 }

@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { Invoice } from '@/types/database';
 import { useManager } from '../ManagerContext';
@@ -14,6 +15,7 @@ interface InvoiceWithDetails extends Invoice {
         user?: {
             full_name: string;
             profile_picture?: string | null;
+            tenant_score?: number;
         };
         room?: {
             room_number: string;
@@ -109,7 +111,7 @@ export default function ManagerPaymentsPage() {
         try {
             let query = supabase
                 .from('invoice')
-                .select('*, contract:contract_id!inner ( id, status, user:user_id ( full_name, profile_picture ), room:room_id!inner ( room_number, floor, building:building_id!inner ( branch_id, name_building ) ) )')
+                .select('*, contract:contract_id!inner ( id, status, user:user_id ( id, full_name, profile_picture, tenant_score ), room:room_id!inner ( room_number, floor, building:building_id!inner ( branch_id, name_building ) ) )')
                 .order('bill_date', { ascending: false });
 
             if (selectedBranchId !== 'All') {
@@ -131,203 +133,10 @@ export default function ManagerPaymentsPage() {
         }
     }
 
-    const [showModal, setShowModal] = useState(false);
-    const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithDetails | null>(null);
-    const [processing, setProcessing] = useState(false);
 
-    // Update handleApprove to open modal
-    const handleApprove = (invoice: InvoiceWithDetails) => {
-        setSelectedInvoice(invoice);
-        setShowModal(true);
-    };
 
-    // Actual Approval Logic (Moved here)
-    const processApproval = async () => {
-        if (!selectedInvoice) return;
-        setProcessing(true);
 
-        const isIssuance = !selectedInvoice.payment_slip;
 
-        try {
-            const newStatus = isIssuance ? 'Unpaid' : 'Paid';
-            const { error } = await supabase
-                .from('invoice')
-                .update({ status: newStatus })
-                .eq('id', selectedInvoice.id);
-
-            if (error) throw error;
-
-            // If paying Entry Fee, activate the Contract
-            if (!isIssuance && selectedInvoice.type === 'entry_fee') {
-                const { error: contractError } = await supabase
-                    .from('contract')
-                    .update({ status: 'complete' }) // Mark contract as Active/Complete
-                    .eq('id', selectedInvoice.contract_id);
-
-                if (contractError) console.error('Error activating contract:', contractError);
-            }
-
-            // Optimistic Update
-            setData(prev => prev.map(inv =>
-                inv.id === selectedInvoice.id ? { ...inv, status: newStatus } : inv
-            ));
-
-            alert(isIssuance ? `Invoice #${selectedInvoice.id} approved. Waiting for tenant payment.` : `Invoice #${selectedInvoice.id} marked as Paid. Contract Activated.`);
-            closeModal();
-        } catch (error) {
-            console.error('Error approving invoice:', error);
-            alert('Error approving invoice.');
-        } finally {
-            setProcessing(false);
-        }
-    };
-
-    // Edit Bill State (for reject on complete contracts)
-    const [showEditModal, setShowEditModal] = useState(false);
-    const [editingInvoice, setEditingInvoice] = useState<InvoiceWithDetails | null>(null);
-    const [editForm, setEditForm] = useState<{
-        room_rent_cost: number | '';
-        room_water_cost: number | '';
-        room_elec_cost: number | '';
-        room_repair_cost: number | '';
-        room_deposit_cost: number | '';
-    }>({
-        room_rent_cost: 0,
-        room_water_cost: 0,
-        room_elec_cost: 0,
-        room_repair_cost: 0,
-        room_deposit_cost: 0,
-    });
-
-    const handleRejectInModal = async () => {
-        if (!selectedInvoice) return;
-        const contractStatus = selectedInvoice.contract?.status?.toLowerCase() || '';
-
-        if (contractStatus === 'incomplete') {
-            // Case 1: Incomplete contract → delete contract and invoice
-            if (!confirm(`This is a new tenant (incomplete contract).\nRejecting will DELETE this contract and invoice permanently.\n\nAre you sure?`)) return;
-            setProcessing(true);
-            try {
-                // Delete invoice first (foreign key constraint)
-                const { error: invError } = await supabase
-                    .from('invoice')
-                    .delete()
-                    .eq('id', selectedInvoice.id);
-                if (invError) throw invError;
-
-                // Delete contract
-                if (selectedInvoice.contract?.id) {
-                    const { error: contractError } = await supabase
-                        .from('contract')
-                        .delete()
-                        .eq('id', selectedInvoice.contract.id);
-                    if (contractError) throw contractError;
-                }
-
-                setData(prev => prev.filter(inv => inv.id !== selectedInvoice.id));
-                alert(`Contract and Invoice #${selectedInvoice.id} have been deleted.`);
-                closeModal();
-            } catch (error) {
-                console.error('Error deleting contract:', error);
-                alert('Error deleting contract. Please try again.');
-            } finally {
-                setProcessing(false);
-            }
-        } else {
-            // Case 2: Complete contract → open edit bill form
-            setEditingInvoice(selectedInvoice);
-            setEditForm({
-                room_rent_cost: selectedInvoice.room_rent_cost || 0,
-                room_water_cost: selectedInvoice.room_water_cost || 0,
-                room_elec_cost: selectedInvoice.room_elec_cost || 0,
-                room_repair_cost: selectedInvoice.room_repair_cost || 0,
-                room_deposit_cost: selectedInvoice.room_deposit_cost || 0,
-            });
-            closeModal();
-            setShowEditModal(true);
-        }
-    };
-
-    const editFormTotal = (Number(editForm.room_rent_cost) || 0) + (Number(editForm.room_water_cost) || 0) + (Number(editForm.room_elec_cost) || 0) + (Number(editForm.room_repair_cost) || 0) + (Number(editForm.room_deposit_cost) || 0);
-
-    const handleSaveEdit = async () => {
-        if (!editingInvoice) return;
-        setProcessing(true);
-        try {
-            const finalForm = {
-                room_rent_cost: Number(editForm.room_rent_cost) || 0,
-                room_water_cost: Number(editForm.room_water_cost) || 0,
-                room_elec_cost: Number(editForm.room_elec_cost) || 0,
-                room_repair_cost: Number(editForm.room_repair_cost) || 0,
-                room_deposit_cost: Number(editForm.room_deposit_cost) || 0,
-            };
-            const { error } = await supabase
-                .from('invoice')
-                .update({
-                    ...finalForm,
-                    room_total_cost: editFormTotal,
-                    status: 'Unpaid',
-                    payment_slip: null,
-                })
-                .eq('id', editingInvoice.id);
-
-            if (error) throw error;
-
-            setData(prev => prev.map(inv =>
-                inv.id === editingInvoice.id
-                    ? { ...inv, ...finalForm, room_total_cost: editFormTotal, status: 'Unpaid', payment_slip: null }
-                    : inv
-            ));
-            alert(`Invoice #${editingInvoice.id} has been updated and set to Unpaid.`);
-            setShowEditModal(false);
-            setEditingInvoice(null);
-        } catch (error) {
-            console.error('Error updating invoice:', error);
-            alert('Error saving changes.');
-        } finally {
-            setProcessing(false);
-        }
-    };
-
-    const closeModal = () => {
-        setShowModal(false);
-        setSelectedInvoice(null);
-        setProcessing(false);
-    };
-
-    const handleReject = async (invoice: InvoiceWithDetails) => {
-        const contractStatus = invoice.contract?.status?.toLowerCase() || '';
-
-        if (contractStatus === 'incomplete') {
-            if (!confirm(`This is a new tenant (incomplete contract).\nRejecting will DELETE this contract and invoice permanently.\n\nAre you sure?`)) return;
-            try {
-                const { error: invError } = await supabase.from('invoice').delete().eq('id', invoice.id);
-                if (invError) throw invError;
-
-                if (invoice.contract?.id) {
-                    const { error: contractError } = await supabase.from('contract').delete().eq('id', invoice.contract.id);
-                    if (contractError) throw contractError;
-                }
-
-                setData(prev => prev.filter(inv => inv.id !== invoice.id));
-                alert(`Contract and Invoice #${invoice.id} have been deleted.`);
-            } catch (error) {
-                console.error('Error deleting contract:', error);
-                alert('Error deleting contract. Please try again.');
-            }
-        } else {
-            // Open edit form
-            setEditingInvoice(invoice);
-            setEditForm({
-                room_rent_cost: invoice.room_rent_cost || 0,
-                room_water_cost: invoice.room_water_cost || 0,
-                room_elec_cost: invoice.room_elec_cost || 0,
-                room_repair_cost: invoice.room_repair_cost || 0,
-                room_deposit_cost: invoice.room_deposit_cost || 0,
-            });
-            setShowEditModal(true);
-        }
-    };
 
     if (loading) return <div className="p-8 text-center text-gray-500">Loading Dashboard...</div>;
 
@@ -551,27 +360,16 @@ export default function ManagerPaymentsPage() {
                                         </span>
                                     </td>
                                     <td className="py-4 px-4 text-center">
-                                        {row.status?.toLowerCase() === 'pending' ? (
-                                            <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                    onClick={() => handleApprove(row)}
-                                                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shadow-sm"
-                                                >
-                                                    {row.payment_slip ? 'Confirm Payment' : 'Approve'}
-                                                </button>
-                                                <button
-                                                    onClick={() => handleReject(row)}
-                                                    className="bg-red-50 text-red-500 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border border-red-100"
-                                                >
-                                                    Reject
-                                                </button>
-                                            </div>
-                                        ) : row.status?.toLowerCase() === 'unpaid' || (row.status?.toLowerCase() !== 'paid' && row.due_date && new Date(row.due_date) < new Date()) ? (
-                                            <span className="text-xs text-gray-400 italic">Waiting...</span>
-                                        ) : row.status?.toLowerCase() === 'paid' ? (
-                                            <span className="text-xs text-green-500 font-bold">Completed</span>
+                                        {row.status?.toLowerCase() === 'paid' ? (
+                                            <span className="text-xs text-green-500 font-bold bg-green-50 px-3 py-1.5 rounded-lg">Completed</span>
                                         ) : (
-                                            <span className="text-xs text-gray-400 italic">-</span>
+                                            <Link
+                                                href={`/manager/invoices/${row.id}/verify`}
+                                                className="inline-flex items-center gap-1.5 bg-blue-50 text-[#0047AB] hover:bg-blue-100 px-4 py-2 rounded-xl text-xs font-bold transition-all border border-blue-100 shadow-sm grow-hover:scale-105"
+                                            >
+                                                <Eye size={14} />
+                                                <span>Verify Details</span>
+                                            </Link>
                                         )}
                                     </td>
                                 </tr>
@@ -587,152 +385,9 @@ export default function ManagerPaymentsPage() {
                     </table>
                 </div>
             </div>
-            {/* Confirmation Modal */}
-            {
-                showModal && selectedInvoice && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-slide-up">
-                            <div className="bg-[#0047AB] p-4 text-white">
-                                <h2 className="text-xl font-bold">Verify Invoice Details</h2>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <p className="text-sm opacity-80">Invoice #{selectedInvoice.id}</p>
-                                    {selectedInvoice.contract?.status?.toLowerCase() === 'incomplete' && (
-                                        <span className="bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-full">New Tenant</span>
-                                    )}
-                                </div>
-                            </div>
 
-                            <div className="p-6 space-y-4">
-                                <div className="flex justify-between items-center border-b pb-2">
-                                    <span className="text-gray-500">Tenant</span>
-                                    <span className="font-bold text-gray-800">{selectedInvoice.contract?.user?.full_name}</span>
-                                </div>
-                                <div className="flex justify-between items-center border-b pb-2">
-                                    <span className="text-gray-500">Room</span>
-                                    <span className="font-bold text-gray-800">{selectedInvoice.contract?.room?.room_number}</span>
-                                </div>
 
-                                <div className="bg-gray-50 p-4 rounded-xl space-y-2">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-gray-600 flex items-center gap-2"><DollarSign size={14} /> Rent</span>
-                                        <span className="font-bold text-gray-800">{(selectedInvoice.room_rent_cost || 0).toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-gray-600 flex items-center gap-2"><Droplets size={14} /> Water</span>
-                                        <span className="font-bold text-cyan-600">{(selectedInvoice.room_water_cost || 0).toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-gray-600 flex items-center gap-2"><Zap size={14} /> Electric</span>
-                                        <span className="font-bold text-yellow-600">{(selectedInvoice.room_elec_cost || 0).toLocaleString()}</span>
-                                    </div>
-                                    {selectedInvoice.room_repair_cost > 0 && (
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-600 flex items-center gap-2"><TrendingUp size={14} /> Repair</span>
-                                            <span className="font-bold text-red-500">{(selectedInvoice.room_repair_cost || 0).toLocaleString()}</span>
-                                        </div>
-                                    )}
-                                    <div className="border-t pt-2 flex justify-between font-bold text-lg text-[#0047AB]">
-                                        <span>Total</span>
-                                        <span>฿ {(selectedInvoice.room_total_cost || 0).toLocaleString()}</span>
-                                    </div>
-                                </div>
 
-                                <div className="p-4 bg-gray-50 flex gap-3">
-                                        <button
-                                            onClick={handleRejectInModal}
-                                            disabled={processing}
-                                            className="flex-1 px-4 py-2 bg-white border border-red-200 text-red-500 rounded-xl font-bold hover:bg-red-50 transition-colors flex items-center justify-center gap-1.5"
-                                        >
-                                            {selectedInvoice.contract?.status?.toLowerCase() === 'incomplete' ? (
-                                                <><Trash2 size={14} /> Delete</>
-                                            ) : (
-                                                <><Edit3 size={14} /> Edit Bill</>
-                                            )}
-                                        </button>
-                                    <button
-                                        onClick={closeModal}
-                                        disabled={processing}
-                                        className="flex-1 px-4 py-2 bg-white border border-gray-300 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-colors"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={processApproval}
-                                        disabled={processing}
-                                        className="flex-1 px-4 py-2 bg-green-500 text-white rounded-xl font-bold hover:bg-green-600 transition-colors shadow-lg"
-                                    >
-                                        {processing ? 'Processing...' : 'Confirm'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-            {/* Edit Bill Modal */}
-            {showEditModal && editingInvoice && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
-                        <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-4 text-white">
-                            <h2 className="text-xl font-bold flex items-center gap-2"><Edit3 size={20} /> Edit Invoice</h2>
-                            <p className="text-sm opacity-80">Invoice #{editingInvoice.id} · {editingInvoice.contract?.user?.full_name}</p>
-                        </div>
-
-                        <div className="p-6 space-y-4">
-                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
-                                <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
-                                <p className="text-xs text-amber-800">Payment was rejected. Please correct the amounts below. The invoice will be set back to <strong>Unpaid</strong>.</p>
-                            </div>
-
-                            <div className="space-y-3">
-                                {[
-                                    { label: 'Rent', key: 'room_rent_cost', icon: <DollarSign size={14} />, color: 'text-gray-600' },
-                                    { label: 'Water', key: 'room_water_cost', icon: <Droplets size={14} />, color: 'text-cyan-600' },
-                                    { label: 'Electric', key: 'room_elec_cost', icon: <Zap size={14} />, color: 'text-yellow-600' },
-                                    { label: 'Repair', key: 'room_repair_cost', icon: <TrendingUp size={14} />, color: 'text-red-500' },
-                                    { label: 'Deposit', key: 'room_deposit_cost', icon: <CreditCard size={14} />, color: 'text-purple-600' },
-                                ].map(field => (
-                                    <div key={field.key} className="flex items-center gap-3">
-                                        <div className={`flex items-center gap-1.5 w-24 text-sm ${field.color}`}>
-                                            {field.icon}
-                                            <span>{field.label}</span>
-                                        </div>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            className="flex-1 bg-gray-100 text-gray-800 text-sm font-bold rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
-                                            value={editForm[field.key as keyof typeof editForm]}
-                                            onChange={(e) => setEditForm(prev => ({ ...prev, [field.key]: e.target.value === '' ? '' : Number(e.target.value) }))}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div className="border-t pt-3 flex justify-between items-center">
-                                <span className="font-bold text-gray-700">New Total</span>
-                                <span className="text-xl font-bold text-orange-600">฿ {editFormTotal.toLocaleString()}</span>
-                            </div>
-                        </div>
-
-                        <div className="p-4 bg-gray-50 flex gap-3">
-                            <button
-                                onClick={() => { setShowEditModal(false); setEditingInvoice(null); }}
-                                disabled={processing}
-                                className="flex-1 px-4 py-2 bg-white border border-gray-300 text-gray-600 rounded-xl font-bold hover:bg-gray-100 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleSaveEdit}
-                                disabled={processing}
-                                className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-xl font-bold hover:bg-orange-600 transition-colors shadow-lg"
-                            >
-                                {processing ? 'Saving...' : 'Save & Set Unpaid'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

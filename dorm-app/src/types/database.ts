@@ -85,6 +85,7 @@ export interface Invoice {
     meeting_date?: string | null; // [NEW] Date string
     meeting_time?: string | null; // [NEW] Time string
     meeting_note?: string | null; // [NEW]
+    penalty_status?: 'none' | 'late' | 'extreme'; // [NEW] tracks applied behavior point penalties
 }
 
 export interface LogMonthlyRoom {
@@ -118,6 +119,9 @@ export interface MaintenanceRequest {
     room_id: number;
     request_number: string;
     issue_description: string;
+    issue_type?: string; 
+    equipment_id?: number | null;
+    equipment_name?: string | null;
     amount: number;
     status_technician: string;
     requested_at: string; // Timestamp string

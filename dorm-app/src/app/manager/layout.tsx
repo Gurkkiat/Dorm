@@ -21,6 +21,7 @@ function ManagerLayoutContent({
     const [isManagerLocked, setIsManagerLocked] = useState(false);
     const [profilePicture, setProfilePicture] = useState<string | null>(null);
     const [showProfile, setShowProfile] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
 
     useEffect(() => {
         // In a real app, you might fetch this from a context or re-verify the session
@@ -59,8 +60,40 @@ function ManagerLayoutContent({
             supabase.from('users').select('profile_picture').eq('id', uid).single().then(({ data }) => {
                 if (data?.profile_picture) setProfilePicture(data.profile_picture);
             });
+
+            // Fetch Unread Notifications & Actions
+            const fetchUnread = async () => {
+                try {
+                    // 1. Persistent Notifications
+                    const { count: persistentCount } = await supabase
+                        .from('notifications')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('user_id', uid)
+                        .eq('is_read', false);
+
+                    // 2. Pending Meeting Actions (Invoices)
+                    const { data: invoices } = await supabase
+                        .from('invoice')
+                        .select('id, meeting_status, contract:contract_id(room:room_id(building:building_id(branch_id)))')
+                        .in('meeting_status', ['pending_manager', 'pending_manager_confirm']);
+                    
+                    let meetingCount = 0;
+                    if (invoices) {
+                        for (const inv of invoices) {
+                            const bId = (inv.contract as any)?.room?.building?.branch_id;
+                            if (selectedBranchId !== 'All' && bId !== selectedBranchId) continue;
+                            meetingCount++;
+                        }
+                    }
+
+                    setUnreadCount((persistentCount || 0) + meetingCount);
+                } catch (err) {
+                    console.error('Error fetching unread count:', err);
+                }
+            };
+            fetchUnread();
         }
-    }, []);
+    }, [selectedBranchId]);
 
     const fetchBranches = async (name: string) => {
         try {
@@ -113,7 +146,7 @@ function ManagerLayoutContent({
         { name: 'Mechanics', href: '/manager/mechanics', icon: UserCog },
         { name: 'Meter', href: '/manager/meter', icon: Gauge },
         { name: 'Manage Tenant', href: '/manager/tenants', icon: Users },
-        { name: 'Notifications', href: '/manager/notifications', icon: Bell },
+        { name: 'Notifications', href: '/manager/notifications', icon: Bell, badge: unreadCount },
     ];
 
     // Removed Manage Users from here as it's now in /admin/owners
@@ -168,8 +201,15 @@ function ManagerLayoutContent({
                                     : 'hover:bg-blue-700/50 text-blue-100'
                                     }`}
                             >
-                                <item.icon size={20} className="mr-3" />
-                                <span>{item.name}</span>
+                                <div className="flex items-center">
+                                    <item.icon size={20} className="mr-3" />
+                                    <span>{item.name}</span>
+                                </div>
+                                {item.badge !== undefined && item.badge > 0 && (
+                                    <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center shadow-lg animate-pulse ml-2">
+                                        {item.badge}
+                                    </span>
+                                )}
                             </Link>
                         );
                     })}

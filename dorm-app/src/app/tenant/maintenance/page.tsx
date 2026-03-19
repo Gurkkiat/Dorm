@@ -184,21 +184,9 @@ export default function TenantMaintenancePage() {
                 photoUrl = await uploadImage(imageFile);
             }
 
-            // Construct Description
-            let finalDescription = description;
-
-            if (type === 'Other') {
-                if (customEquipment.trim()) {
-                    finalDescription = `[Equipment: ${customEquipment.trim()}] ${finalDescription}`;
-                }
-            } else if (selectedEquipmentId) {
-                const eq = equipmentList.find(item => item.id.toString() === selectedEquipmentId);
-                if (eq) {
-                    finalDescription = `[Equipment: ${eq.name} (${eq.serial_number})] ${finalDescription}`;
-                }
-            }
-
-            finalDescription = `[Type: ${type}] ${finalDescription}`;
+            // New Structured Data
+            const equipmentId = selectedEquipmentId && type !== 'Other' ? Number(selectedEquipmentId) : null;
+            const equipmentName = type === 'Other' ? customEquipment.trim() : (equipmentList.find(e => e.id.toString() === selectedEquipmentId)?.name || null);
 
             const { error } = await supabase
                 .from('maintenance_request')
@@ -206,7 +194,10 @@ export default function TenantMaintenancePage() {
                     {
                         room_id: contract.room_id,
                         request_number: `REQ-${Date.now()}`,
-                        issue_description: finalDescription,
+                        issue_description: description, // Just the raw description now!
+                        issue_type: type,
+                        equipment_id: equipmentId,
+                        equipment_name: equipmentName,
                         status_technician: 'Pending',
                         requested_at: new Date().toISOString(),
                         path_photos: photoUrl,
@@ -282,7 +273,19 @@ export default function TenantMaintenancePage() {
                                         <Wrench size={24} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <h3 className="font-bold text-gray-800 text-lg mb-1 truncate">{req.issue_description}</h3>
+                                        <div className="flex flex-wrap gap-2 mb-2">
+                                            {req.issue_type && (
+                                                <span className="px-2 py-0.5 bg-blue-50 text-[#0047AB] text-[10px] font-bold uppercase rounded-md border border-blue-100">
+                                                    {req.issue_type}
+                                                </span>
+                                            )}
+                                            {req.equipment_name && (
+                                                <span className="px-2 py-0.5 bg-gray-50 text-gray-600 text-[10px] font-bold uppercase rounded-md border border-gray-100">
+                                                    {req.equipment_name}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <h3 className="font-bold text-gray-800 text-lg mb-1 leading-tight">{req.issue_description}</h3>
                                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                                             <div className="flex items-center gap-1.5">
                                                 <Clock size={14} />

@@ -236,12 +236,12 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     const items = [
         {
             label: 'ค่าหอพัก',
-            amount: (invoice.type?.toLowerCase().trim() === 'entry_fee' ? 0 : (invoice.room_rent_cost ?? 0)),
+            amount: invoice.room_rent_cost || 0,
             unit: 1,
-            price: (invoice.type?.toLowerCase().trim() === 'entry_fee' ? 0 : (invoice.room_rent_cost ?? 0))
+            price: invoice.room_rent_cost || 0
         },
         {
-            label: 'ค่ามัดจำ',
+            label: 'ค่าประกันหอพัก',
             amount: invoice.room_deposit_cost,
             unit: 1,
             price: invoice.room_deposit_cost
@@ -283,7 +283,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     // Helper to compute actual status including Overdue
     const getComputedStatus = () => {
         let s = status;
-        if (s !== 'paid' && invoice.due_date && new Date(invoice.due_date) < new Date()) {
+        // Only show Overdue if the bill has been issued (status is unpaid)
+        if (s === 'unpaid' && invoice.due_date && new Date(invoice.due_date) < new Date()) {
             s = 'overdue';
         }
         return s;

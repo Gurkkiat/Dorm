@@ -116,26 +116,6 @@ export default function ManagerMaintenancePage() {
 
     if (loading) return <div className="p-8 text-center text-gray-500">Loading Dashboard...</div>;
 
-    const parseIssueDescription = (fullDescription: string) => {
-        let text = fullDescription || '';
-        let type = 'General';
-        let equipment = '-';
-
-        const typeMatch = text.match(/\[Type:\s*(.*?)\]/);
-        if (typeMatch) {
-            type = typeMatch[1];
-            text = text.replace(typeMatch[0], '').trim();
-        }
-
-        const eqMatch = text.match(/\[Equipment:\s*(.*?)\]/);
-        if (eqMatch) {
-            equipment = eqMatch[1];
-            text = text.replace(eqMatch[0], '').trim();
-        }
-
-        return { type, equipment, text };
-    };
-
     const currentDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
     // Helper for Status Badge
@@ -147,16 +127,10 @@ export default function ManagerMaintenancePage() {
         return <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold">{status}</span>;
     };
 
-    // Pre-parse selected request
-    let modalType = 'General';
-    let modalEquipment = '-';
-    let modalText = '';
-    if (selectedRequest) {
-        const parsed = parseIssueDescription(selectedRequest.issue_description);
-        modalType = parsed.type;
-        modalEquipment = parsed.equipment;
-        modalText = parsed.text;
-    }
+    // Clean data for modal
+    const modalType = selectedRequest?.issue_type || 'General';
+    const modalEquipment = selectedRequest?.equipment_name || '-';
+    const modalText = selectedRequest?.issue_description || '';
 
     return (
         <div className="h-full flex flex-col p-6 bg-gray-50/50 gap-6 overflow-y-auto">
@@ -263,9 +237,7 @@ export default function ManagerMaintenancePage() {
                             </tr>
                         </thead>
                         <tbody className="text-sm divide-y divide-gray-50">
-                            {filteredData.map((row) => {
-                                const { type, equipment, text } = parseIssueDescription(row.issue_description);
-                                return (
+                            {filteredData.map((row) => (
                                 <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="py-4 px-4">
                                         <div className="flex items-center gap-3">
@@ -274,13 +246,16 @@ export default function ManagerMaintenancePage() {
                                             </div>
                                             <div>
                                                 <p className="font-bold text-gray-800">Room {row.room?.room_number || '-'}</p>
-                                                <p className="text-xs text-gray-500">{type} Issue</p>
+                                                <div className="flex gap-1 mt-0.5">
+                                                    <span className="text-[10px] font-bold text-[#0047AB] uppercase px-1 bg-blue-50 rounded border border-blue-100">{row.issue_type || 'General'}</span>
+                                                    {row.equipment_name && <span className="text-[10px] font-bold text-gray-500 uppercase px-1 bg-gray-50 rounded border border-gray-100 truncate max-w-[80px]">{row.equipment_name}</span>}
+                                                </div>
                                             </div>
                                         </div>
                                     </td>
                                     <td className="py-4 px-4 text-center">
-                                        <p className="text-gray-700 max-w-xs truncate mx-auto" title={text}>
-                                            {text}
+                                        <p className="text-gray-700 max-w-xs truncate mx-auto" title={row.issue_description}>
+                                            {row.issue_description}
                                         </p>
                                     </td>
                                     <td className="py-4 px-4 text-center text-gray-500">
@@ -303,7 +278,7 @@ export default function ManagerMaintenancePage() {
                                         </button>
                                     </td>
                                 </tr>
-                            )})}
+                            ))}
                             {filteredData.length === 0 && (
                                 <tr>
                                     <td colSpan={5} className="py-12 text-center text-gray-400">

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Wallet, Wrench, Gauge, Award, User, Building2 } from 'lucide-react';
+import { LayoutDashboard, Wallet, Wrench, Gauge, Award, User, Building2, Bell } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 
 export default function TenantLayout({
@@ -16,6 +16,7 @@ export default function TenantLayout({
     const [userName, setUserName] = useState('Tenant');
     const [profilePic, setProfilePic] = useState<string | null>(null);
     const [branchInfo, setBranchInfo] = useState<{ city: string; name: string } | null>(null);
+    const [unreadCount, setUnreadCount] = useState(0);
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -59,6 +60,16 @@ export default function TenantLayout({
                     if (userData?.profile_picture) {
                         setProfilePic(userData.profile_picture);
                     }
+
+                    // Fetch Unread Notifications
+                    const { count } = await supabase
+                        .from('notifications')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('user_id', storedUserId)
+                        .eq('is_read', false);
+                    
+                    setUnreadCount(count || 0);
+
                 } catch (err) {
                     console.error('Error fetching tenant data:', err);
                 }
@@ -75,6 +86,7 @@ export default function TenantLayout({
 
     const navItems = [
         { name: 'Dashboard', href: '/tenant/dashboard', icon: LayoutDashboard },
+        { name: 'Notifications', href: '/tenant/notifications', icon: Bell, badge: unreadCount },
         { name: 'Payment', href: '/tenant/payment', icon: Wallet },
         { name: 'Maintenance', href: '/tenant/maintenance', icon: Wrench },
         { name: 'Meter', href: '/tenant/meter', icon: Gauge },
@@ -111,13 +123,20 @@ export default function TenantLayout({
                     {navItems.map((item) => (
                         <Link key={item.name} href={item.href}>
                             <div
-                                className={`flex items-center gap-4 px-4 py-3 rounded-lg transition-colors ${isActive(item.href)
+                                className={`flex items-center justify-between px-4 py-3 rounded-lg transition-colors ${isActive(item.href)
                                     ? 'bg-white/20 font-bold'
                                     : 'hover:bg-white/10 text-white/80'
                                     }`}
                             >
-                                <item.icon size={20} />
-                                <span>{item.name}</span>
+                                <div className="flex items-center gap-4">
+                                    <item.icon size={20} />
+                                    <span>{item.name}</span>
+                                </div>
+                                {item.badge !== undefined && item.badge > 0 && (
+                                    <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center shadow-lg animate-pulse">
+                                        {item.badge}
+                                    </span>
+                                )}
                             </div>
                         </Link>
                     ))}

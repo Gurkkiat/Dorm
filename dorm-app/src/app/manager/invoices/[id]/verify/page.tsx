@@ -57,9 +57,10 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
         setProcessing(true);
 
         try {
+            const finalStatus = (newStatus === 'Paid' && !invoice.payment_slip) ? 'Unpaid' : newStatus;
             const updatePayload: any = {
-                status: newStatus,
-                paid_date: newStatus === 'Paid' ? new Date().toISOString() : null
+                status: finalStatus,
+                paid_date: finalStatus === 'Paid' ? new Date().toISOString() : null
             };
 
             // If we are rejecting a slip, clear it
@@ -70,22 +71,72 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
             let requiresMeeting = false;
 
             // [NEW] Overdue Penalty & Meeting Logic
-            if (newStatus === 'Paid' && invoice.due_date && invoice.type !== 'entry_fee') {
+            console.log('--- Handle Action Debug ---');
+            console.log('newStatus:', newStatus);
+            console.log('invoice.id:', invoice.id);
+            console.log('invoice.type:', invoice.type);
+            console.log('invoice.due_date:', invoice.due_date);
+
+
+
+            if ((finalStatus.toLowerCase() === 'paid' || finalStatus.toLowerCase() === 'unpaid') && invoice.due_date && invoice.type?.toLowerCase() !== 'entry_fee') {
                 const dueDt = new Date(invoice.due_date);
                 const paidDt = new Date();
-                const diffTime = paidDt.getTime() - dueDt.getTime();
+                const diffTime = Date.UTC(paidDt.getFullYear(), paidDt.getMonth(), paidDt.getDate()) - 
+                                Date.UTC(dueDt.getFullYear(), dueDt.getMonth(), dueDt.getDate());
                 const daysOverdue = Math.floor(diffTime / (1000 * 3600 * 24));
 
                 if (daysOverdue > 7) {
                     updatePayload.meeting_status = 'pending_manager';
                     requiresMeeting = true;
+                    
+                    const penaltyStatus = (invoice as any).penalty_status || 'none';
+                    if (penaltyStatus !== 'extreme') {
+                        const deduction = penaltyStatus === 'late' ? 40 : 50;
+                        if (invoice.contract?.user?.id) {
+                            const currentScore = invoice.contract.user.tenant_score ?? 100;
+                            const newScore = Math.max(0, currentScore - deduction);
+
+                            await supabase
+                                .from('users')
+                                .update({ tenant_score: newScore })
+                                .eq('id', invoice.contract.user.id);
+
+                            await supabase.from('notifications').insert({
+                                user_id: invoice.contract.user.id,
+                                type: 'penalty',
+                                title: 'Point Deduction: Severe Late Payment',
+                                description: `You have been deducted 50 points for Invoice #${invoice.id} (Paid ${daysOverdue} days late).`,
+                                link: `/tenant/point?userId=${invoice.contract.user.id}`,
+                                is_read: false
+                            });
+
+                            updatePayload.penalty_status = 'extreme';
+                        }
+                    }
                 } else if (daysOverdue > 0 && daysOverdue <= 7) {
-                    if (invoice.contract?.user?.id) {
-                        const currentScore = invoice.contract.user.tenant_score ?? 100;
-                        await supabase
-                            .from('users')
-                            .update({ tenant_score: currentScore - 10 })
-                            .eq('id', invoice.contract.user.id);
+                    const penaltyStatus = (invoice as any).penalty_status || 'none';
+                    if (penaltyStatus === 'none') {
+                        if (invoice.contract?.user?.id) {
+                            const currentScore = invoice.contract.user.tenant_score ?? 100;
+                            const newScore = Math.max(0, currentScore - 10);
+                            
+                            await supabase
+                                .from('users')
+                                .update({ tenant_score: newScore })
+                                .eq('id', invoice.contract.user.id);
+                            
+                                await supabase.from('notifications').insert({
+                                    user_id: invoice.contract.user.id,
+                                    type: 'penalty',
+                                    title: 'Point Deduction: Late Payment',
+                                    description: `You have been deducted 10 points for Invoice #${invoice.id} (Paid ${daysOverdue} days late).`,
+                                    link: `/tenant/point?userId=${invoice.contract.user.id}`,
+                                    is_read: false
+                                });
+
+                            updatePayload.penalty_status = 'late';
+                        }
                     }
                 }
             }
@@ -155,15 +206,17 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
                 .eq('id', invoice.id);
             if (invErr) throw invErr;
 
-            // Deduct 50 score
-            const currentScore = invoice.contract.user.tenant_score ?? 100;
-            const { error: usrErr } = await supabase
-                .from('users')
-                .update({ tenant_score: currentScore - 50 })
-                .eq('id', invoice.contract.user.id);
-            if (usrErr) throw usrErr;
+            // Points already deducted in handleAction for extreme late
+            
+            // Notify Manager
+            await supabase.from('notifications').insert({
+                user_id: 1, // Adjust if needed
+                type: 'system',
+                title: 'Mandatory Meeting Finalized',
+                description: `Meeting confirmed for ${invoice.contract?.user?.full_name}.`
+            });
 
-            alert('Meeting confirmed and Tenant Score deducted by 50 points.');
+            alert('Meeting confirmed.');
             router.push('/manager/tenants');
         } catch (err) {
             console.error('Error confirming meeting:', err);
@@ -208,9 +261,9 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
         },
         {
             label: 'ค่าเช่าห้อง',
-            amount: (invoice.contract?.status === 'complete' ? (invoice.contract?.room?.rent_price || 0) : 0),
+            amount: invoice.room_rent_cost || 0,
             unit: 1,
-            price: (invoice.contract?.status === 'complete' ? (invoice.contract?.room?.rent_price || 0) : 0)
+            price: invoice.room_rent_cost || 0
         },
         {
             label: 'ค่าไฟ',
@@ -330,7 +383,7 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
                                 className="w-full bg-green-500 text-white font-bold p-3 rounded-xl hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
                             >
                                 <Check size={20} />
-                                Confirm Appointment (-50 Score)
+                                Confirm Appointment
                             </button>
                         </div>
                     ) : invoice.meeting_status === 'pending_tenant' ? (
@@ -398,7 +451,7 @@ export default function VerifyInvoicePage({ params }: { params: Promise<{ id: st
                                         {/* Issue Invoice (Approve) Button */}
                                         <button
                                             disabled={processing}
-                                            onClick={() => handleAction('Unpaid')}
+                                            onClick={() => handleAction('Paid')}
                                             className={`bg-white rounded-xl p-2 shadow-lg transition-transform group ${processing ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110'}`}
                                             title="Issue Invoice"
                                         >

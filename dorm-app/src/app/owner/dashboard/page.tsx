@@ -18,6 +18,8 @@ export default function OwnerDashboardPage() {
         totalRevenue: 0,
         totalBilled: 0,
         pendingAmount: 0,
+        totalExpenses: 0,
+        netProfit: 0,
         occupancyRate: 0,
         activeTenants: 0,
         pendingMaintenance: 0,
@@ -164,6 +166,14 @@ export default function OwnerDashboardPage() {
             if (selectedBuilding !== 'All') invoiceQuery = invoiceQuery.eq('contract.room.building.id', Number(selectedBuilding));
             const { data: invoices } = await invoiceQuery;
 
+            // 5. Fetch Expenses Data
+            let expenseQuery = supabase
+                .from('expenses')
+                .select('id, amount, paid_at, building_id, branch_id');
+            if (branchId) expenseQuery = expenseQuery.eq('branch_id', branchId);
+            if (selectedBuilding !== 'All') expenseQuery = expenseQuery.eq('building_id', Number(selectedBuilding));
+            const { data: expensesData } = await expenseQuery;
+
             // Apply Date Filters
             let filteredInvoices = invoices || [];
             if (selectedYear !== 'All') {
@@ -188,7 +198,20 @@ export default function OwnerDashboardPage() {
 
             const totalBilled = filteredInvoices.reduce((sum, inv) => sum + (inv.room_total_cost || 0), 0) || 0;
             const pendingAmount = filteredInvoices.filter(inv => inv.status?.toLowerCase() !== 'paid').reduce((sum, inv) => sum + (inv.room_total_cost || 0), 0) || 0;
-            const totalRevenue = totalBilled - pendingAmount;
+            const totalRevenue = totalBilled - pendingAmount; // Total Collected (Income)
+
+            // Apply Date Filters to Expenses
+            let filteredExpenses = expensesData || [];
+            if (selectedYear !== 'All') {
+                filteredExpenses = filteredExpenses.filter(exp => exp.paid_at && exp.paid_at.startsWith(selectedYear));
+            }
+            if (selectedMonth !== 'All') {
+                const monthPadded = '-' + selectedMonth.padStart(2, '0') + '-';
+                filteredExpenses = filteredExpenses.filter(exp => exp.paid_at && exp.paid_at.includes(monthPadded));
+            }
+
+            const totalExpenses = filteredExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0) || 0;
+            const netProfit = totalRevenue - totalExpenses;
 
             // Group revenue by month based on Year Filter for Chart
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -232,6 +255,8 @@ export default function OwnerDashboardPage() {
                 totalRevenue,
                 totalBilled,
                 pendingAmount,
+                totalExpenses,
+                netProfit,
                 occupancyRate,
                 activeTenants: tenantCount,
                 pendingMaintenance: maintCount,
