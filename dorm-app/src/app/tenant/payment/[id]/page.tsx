@@ -133,13 +133,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                         .neq('id', invoice.contract_id);
                 }
 
-                // Update Room: Status -> 'occupied'
-                if (invoice.contract?.room_id) {
-                    await supabase
-                        .from('room')
-                        .update({ status: 'occupied' })
-                        .eq('id', invoice.contract.room_id);
-                }
+                // [REMOVED] Premature room status update to 'occupied'. 
+                // This must wait for Manager Verification in VerifyInvoicePage.
 
                 // Fetch correct branch_id via Room -> Building
                 const { data: roomData } = await supabase
@@ -519,21 +514,21 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                                 <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleMockPayment(); }}>
                                     <div>
                                         <label className="text-xs ml-1 opacity-80">Card number</label>
-                                        <input type="text" placeholder="1234 5678 9012 3456" className="w-full p-3 rounded text-[#0047AB] text-sm" required />
+                                        <input type="text" placeholder="1234 5678 9012 3456" className="w-full p-3 rounded-xl bg-white text-[#0047AB] placeholder:text-blue-300 font-bold text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" required />
                                     </div>
                                     <div>
                                         <label className="text-xs ml-1 opacity-80">Name on card</label>
-                                        <input type="text" placeholder="Ex. Krittee Panthong" className="w-full p-3 rounded text-[#0047AB] text-sm" required />
+                                        <input type="text" placeholder="Ex. Krittee Panthong" className="w-full p-3 rounded-xl bg-white text-[#0047AB] placeholder:text-blue-300 font-bold text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" required />
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <label className="text-xs ml-1 opacity-80">Expiry date</label>
-                                            <input type="text" placeholder="01 / 19" className="w-full p-3 rounded text-[#0047AB] text-sm" required />
+                                            <input type="text" placeholder="01 / 19" className="w-full p-3 rounded-xl bg-white text-[#0047AB] placeholder:text-blue-300 font-bold text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" required />
                                         </div>
                                         <div>
                                             <label className="text-xs ml-1 opacity-80">Security Code</label>
                                             <div className="flex gap-2">
-                                                <input type="password" placeholder="•••" className="w-full p-3 rounded text-[#0047AB] text-sm" maxLength={3} required />
+                                                <input type="password" placeholder="•••" className="w-full p-3 rounded-xl bg-white text-[#0047AB] placeholder:text-blue-300 font-bold text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 w-full" maxLength={3} required />
                                             </div>
                                         </div>
                                     </div>

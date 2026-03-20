@@ -527,7 +527,7 @@ export default function CreateContractPage() {
             // 4. Update Room status and Recalculate Residents from DB (Self-Correcting)
             const { data: activeRoomContracts, error: countError } = await supabase
                 .from('contract')
-                .select('residents')
+                .select('status')
                 .eq('room_id', parseInt(formData.room_id))
                 .in('status', ['Active', 'active', 'complete', 'incomplete']);
 
@@ -536,10 +536,18 @@ export default function CreateContractPage() {
             // Count number of contracts instead of summing 'residents' field (1 contract = 1 person)
             const totalResidents = activeRoomContracts?.length || 0;
 
+            let newStatus = 'vacant';
+            if (totalResidents > 0) {
+                // If there's at least one tenant who has "complete" status, it's occupied.
+                // Otherwise, if there's only "incomplete" or no one is "complete" yet, it's assign.
+                const hasComplete = activeRoomContracts?.some(c => ['complete', 'Active', 'active'].includes(c.status));
+                newStatus = hasComplete ? 'occupied' : 'assign';
+            }
+
             await supabase
                 .from('room')
                 .update({
-                    status: totalResidents > 0 ? 'assign' : 'vacant', // Update status based on count
+                    status: newStatus, 
                     current_residents: totalResidents
                 })
                 .eq('id', parseInt(formData.room_id));

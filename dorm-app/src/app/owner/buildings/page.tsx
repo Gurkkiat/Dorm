@@ -91,6 +91,11 @@ export default function ManageBuildingsPage() {
         pet_status: false
     });
 
+    // Filters
+    const [filterBuilding, setFilterBuilding] = useState('All');
+    const [filterFloor, setFilterFloor] = useState('All');
+    const [filterStatus, setFilterStatus] = useState('All');
+
     useEffect(() => {
         fetchData();
     }, []);
@@ -217,6 +222,7 @@ export default function ManageBuildingsPage() {
             if (error) throw error;
             
             alert(`Successfully generated ${newRooms.length} rooms!`);
+            setShowRoomModal(true); // Keep it open for user verification? No, let's close it
             setShowRoomModal(false);
             setBulkForm({ start_floor: 1, end_floor: 1, rooms_per_floor: 10, rent_price: 5000, pet_status: false });
             fetchData();
@@ -321,6 +327,19 @@ export default function ManageBuildingsPage() {
         }
     };
 
+    // Combined filter logic for rendering
+    const filteredBuildings = buildings
+        .filter(b => filterBuilding === 'All' || String(b.id) === filterBuilding)
+        .map(b => ({
+            ...b,
+            rooms: (b.rooms || []).filter(r => {
+                const statusMatch = filterStatus === 'All' || r.status?.toLowerCase() === filterStatus.toLowerCase();
+                const floorMatch = filterFloor === 'All' || String(r.floor) === filterFloor;
+                return statusMatch && floorMatch;
+            })
+        }))
+        .filter(b => b.rooms.length > 0 || (filterStatus === 'All' && filterFloor === 'All')); // Only show empty buildings if no specific room filters are set
+
     return (
         <div className="h-full flex flex-col gap-6">
             {/* Header */}
@@ -338,16 +357,76 @@ export default function ManageBuildingsPage() {
                 </button>
             </div>
 
+            {/* Filters Bar */}
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Building:</span>
+                    <select 
+                        value={filterBuilding}
+                        onChange={e => setFilterBuilding(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        <option value="All">All Buildings</option>
+                        {buildings.map(b => (
+                            <option key={b.id} value={b.id}>{b.name_building}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Floor:</span>
+                    <select 
+                        value={filterFloor}
+                        onChange={e => setFilterFloor(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        <option value="All">All Floors</option>
+                        {/* Get unique floors from all buildings or selected building */}
+                        {Array.from(new Set(
+                            (filterBuilding === 'All' 
+                                ? buildings.flatMap(b => b.rooms?.map(r => r.floor) || [])
+                                : buildings.find(b => String(b.id) === filterBuilding)?.rooms?.map(r => r.floor) || []
+                            ).filter(f => f !== undefined)
+                        )).sort((a,b) => a-b).map(f => (
+                            <option key={f} value={f}>Floor {f}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Status:</span>
+                    <select 
+                        value={filterStatus}
+                        onChange={e => setFilterStatus(e.target.value)}
+                        className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        <option value="All">All Status</option>
+                        <option value="Vacant">Vacant</option>
+                        <option value="Occupied">Occupied</option>
+                        <option value="Assign">Assign</option>
+                    </select>
+                </div>
+
+                {(filterBuilding !== 'All' || filterFloor !== 'All' || filterStatus !== 'All') && (
+                    <button 
+                        onClick={() => { setFilterBuilding('All'); setFilterFloor('All'); setFilterStatus('All'); }}
+                        className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                    >
+                        Reset Filters
+                    </button>
+                )}
+            </div>
+
             {/* List */}
             <div className="flex-1 overflow-auto space-y-6">
                 {loading ? (
                     <div className="p-8 text-center text-slate-500 bg-white rounded-2xl shadow-sm border border-slate-200">Loading buildings...</div>
-                ) : buildings.length === 0 ? (
+                ) : filteredBuildings.length === 0 ? (
                     <div className="p-12 text-center text-slate-400 bg-white rounded-2xl shadow-sm border border-slate-200">
-                        No buildings found. Click "Add Building" to get started.
+                        {buildings.length === 0 ? 'No buildings found. Click "Add Building" to get started.' : 'No rooms match your filters.'}
                     </div>
                 ) : (
-                    buildings.map(building => (
+                    filteredBuildings.map(building => (
                         <div key={building.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                                 <div className="flex items-center gap-4">
@@ -361,7 +440,15 @@ export default function ManageBuildingsPage() {
                                             <span className="text-slate-300">|</span>
                                             <span>{building.total_floor} Floors</span>
                                             <span className="text-slate-300">|</span>
-                                            <span>{building.rooms?.length || 0} Rooms</span>
+                                            <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">
+                                                {(building.rooms || []).filter(r => r.status?.toLowerCase() === 'occupied').length} Occupied
+                                            </span>
+                                            <span className="bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">
+                                                {(building.rooms || []).filter(r => r.status?.toLowerCase() === 'assign').length} Assign
+                                            </span>
+                                            <span className="bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">
+                                                {(building.rooms || []).filter(r => r.status?.toLowerCase() === 'vacant').length} Vacant
+                                            </span>
                                         </div>
                                     </div>
                                 </div>

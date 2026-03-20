@@ -47,7 +47,8 @@ export interface User {
     is_primary_tenant: boolean;
     branch_id?: number | null;
     profile_picture?: string | null;
-    tenant_score?: number; // [NEW] added for penalty tracking
+    tenant_score?: number; 
+    password?: string; // [NEW] added for custom auth management
 }
 
 export interface Contract {

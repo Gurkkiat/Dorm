@@ -1,0 +1,34 @@
+src/app/manager/dashboard/page.tsx(4,26): error TS2307: Cannot find module '@/lib/supabaseClient' or its corresponding type declarations.
+src/app/manager/dashboard/page.tsx(5,55): error TS2307: Cannot find module '@/types/database' or its corresponding type declarations.
+src/app/manager/dashboard/page.tsx(175,43): error TS2339: Property 'bill_date' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(184,32): error TS2339: Property 'status' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(185,46): error TS2339: Property 'room_total_cost' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(187,54): error TS2339: Property 'status' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(189,68): error TS2339: Property 'room_total_cost' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(194,30): error TS2339: Property 'status_technician' does not exist on type 'MaintenanceWithDetails'.
+src/app/manager/dashboard/page.tsx(231,30): error TS2339: Property 'status' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(232,42): error TS2339: Property 'due_date' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(232,71): error TS2339: Property 'due_date' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(250,39): error TS2339: Property 'bill_date' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(264,27): error TS2339: Property 'bill_date' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(264,61): error TS2339: Property 'bill_date' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(269,26): error TS2339: Property 'status_technician' does not exist on type 'MaintenanceWithDetails'.
+src/app/manager/dashboard/page.tsx(277,28): error TS2339: Property 'issue_description' does not exist on type 'MaintenanceWithDetails'.
+src/app/manager/dashboard/page.tsx(288,26): error TS2339: Property 'move_in' does not exist on type 'ContractWithDetails'.
+src/app/manager/dashboard/page.tsx(288,47): error TS2339: Property 'move_in' does not exist on type 'ContractWithDetails'.
+src/app/manager/dashboard/page.tsx(289,27): error TS2339: Property 'move_out' does not exist on type 'ContractWithDetails'.
+src/app/manager/dashboard/page.tsx(289,49): error TS2339: Property 'move_out' does not exist on type 'ContractWithDetails'.
+src/app/manager/dashboard/page.tsx(454,58): error TS2339: Property 'id' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(469,109): error TS2339: Property 'room_total_cost' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(473,62): error TS2339: Property 'due_date' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(473,86): error TS2339: Property 'due_date' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(511,45): error TS2339: Property 'id' does not exist on type 'MaintenanceWithDetails'.
+src/app/manager/dashboard/page.tsx(516,101): error TS2339: Property 'issue_description' does not exist on type 'MaintenanceWithDetails'.
+src/app/manager/dashboard/page.tsx(518,57): error TS2339: Property 'requested_at' does not exist on type 'MaintenanceWithDetails'.
+src/app/manager/dashboard/page.tsx(538,51): error TS2339: Property 'move_in' does not exist on type 'ContractWithDetails'.
+src/app/manager/dashboard/page.tsx(538,72): error TS2339: Property 'move_in' does not exist on type 'ContractWithDetails'.
+src/app/manager/dashboard/page.tsx(541,49): error TS2339: Property 'id' does not exist on type 'ContractWithDetails'.
+src/app/manager/dashboard/page.tsx(600,104): error TS2339: Property 'room_total_cost' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(607,115): error TS2339: Property 'bill_date' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(612,58): error TS2339: Property 'due_date' does not exist on type 'InvoiceWithDetails'.
+src/app/manager/dashboard/page.tsx(612,94): error TS2339: Property 'due_date' does not exist on type 'InvoiceWithDetails'.

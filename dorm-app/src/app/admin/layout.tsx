@@ -90,16 +90,18 @@ export default function AdminLayout({
         });
     }, [router]);
 
-    // Persist selected branch to localStorage so child pages can read it
-    useEffect(() => {
-        if (selectedBranchId === 'all') {
+    // Persist selected branch to localStorage immediately when it changes
+    // Child components rely on this being up-to-date before they remount via the 'key' prop on main
+    const updateBranchScope = (val: string) => {
+        setSelectedBranchId(val);
+        if (val === 'all') {
             localStorage.removeItem('admin_branch_filter');
-            localStorage.removeItem('user_branch_id'); // clear branch scope
+            localStorage.removeItem('user_branch_id');
         } else {
-            localStorage.setItem('admin_branch_filter', selectedBranchId);
-            localStorage.setItem('user_branch_id', selectedBranchId); // let owner pages use it
+            localStorage.setItem('admin_branch_filter', val);
+            localStorage.setItem('user_branch_id', val);
         }
-    }, [selectedBranchId]);
+    };
 
     const handleLogout = () => {
         localStorage.clear();
@@ -131,7 +133,7 @@ export default function AdminLayout({
                     <div className="relative group">
                         <select
                             value={selectedBranchId}
-                            onChange={e => setSelectedBranchId(e.target.value)}
+                            onChange={e => updateBranchScope(e.target.value)}
                             className="w-full appearance-none bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600/50 hover:border-blue-500/50 text-[13px] font-bold text-slate-100 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all cursor-pointer shadow-inner pr-10"
                         >
                             <option value="all">All Branches Overview</option>
